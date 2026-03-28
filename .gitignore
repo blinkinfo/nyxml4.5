@@ -1,0 +1,16 @@
+# Environment (but NOT .env.example)
+.env
+!.env.example
+
+# Database
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/

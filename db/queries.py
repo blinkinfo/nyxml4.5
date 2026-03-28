@@ -1,0 +1,344 @@
+"""CRUD helpers and analytics queries for signals, trades, and settings."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+import aiosqlite
+import config as cfg
+
+
+def _db() -> str:
+    return cfg.DB_PATH
+
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+async def get_setting(key: str) -> str | None:
+    async with aiosqlite.connect(_db()) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = await cursor.fetchone()
+        return row["value"] if row else None
+
+
+async def set_setting(key: str, value: str) -> None:
+    async with aiosqlite.connect(_db()) as db:
+        await db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        await db.commit()
+
+
+async def is_autotrade_enabled() -> bool:
+    val = await get_setting("autotrade_enabled")
+    return val == "true"
+
+
+async def get_trade_amount() -> float:
+    val = await get_setting("trade_amount_usdc")
+    return float(val) if val else cfg.TRADE_AMOUNT_USDC
+
+
+# ---------------------------------------------------------------------------
+# Signal CRUD
+# ---------------------------------------------------------------------------
+
+async def insert_signal(
+    slot_start: str,
+    slot_end: str,
+    slot_timestamp: int,
+    side: str | None,
+    entry_price: float | None,
+    opposite_price: float | None,
+    skipped: bool = False,
+) -> int:
+    async with aiosqlite.connect(_db()) as db:
+        cursor = await db.execute(
+            "INSERT INTO signals (slot_start, slot_end, slot_timestamp, side, "
+            "entry_price, opposite_price, skipped) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (slot_start, slot_end, slot_timestamp, side, entry_price, opposite_price, 1 if skipped else 0),
+        )
+        await db.commit()
+        return cursor.lastrowid  # type: ignore[return-value]
+
+
+async def resolve_signal(signal_id: int, outcome: str, is_win: bool) -> None:
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(_db()) as db:
+        await db.execute(
+            "UPDATE signals SET outcome = ?, is_win = ?, resolved_at = ? WHERE id = ?",
+            (outcome, 1 if is_win else 0, now, signal_id),
+        )
+        await db.commit()
+
+
+async def get_recent_signals(n: int = 10) -> list[dict[str, Any]]:
+    async with aiosqlite.connect(_db()) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM signals ORDER BY id DESC LIMIT ?", (n,)
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def get_unresolved_signals() -> list[dict[str, Any]]:
+    async with aiosqlite.connect(_db()) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM signals WHERE is_win IS NULL AND skipped = 0 ORDER BY id"
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def get_last_signal() -> dict[str, Any] | None:
+    async with aiosqlite.connect(_db()) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM signals WHERE skipped = 0 ORDER BY id DESC LIMIT 1"
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# Trade CRUD
+# ---------------------------------------------------------------------------
+
+async def insert_trade(
+    signal_id: int,
+    slot_start: str,
+    slot_end: str,
+    side: str,
+    entry_price: float,
+    amount_usdc: float,
+    order_id: str | None = None,
+    fill_price: float | None = None,
+    status: str = "pending",
+) -> int:
+    async with aiosqlite.connect(_db()) as db:
+        cursor = await db.execute(
+            "INSERT INTO trades (signal_id, slot_start, slot_end, side, entry_price, "
+            "amount_usdc, order_id, fill_price, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (signal_id, slot_start, slot_end, side, entry_price, amount_usdc, order_id, fill_price, status),
+        )
+        await db.commit()
+        return cursor.lastrowid  # type: ignore[return-value]
+
+
+async def update_trade_status(trade_id: int, status: str, order_id: str | None = None) -> None:
+    async with aiosqlite.connect(_db()) as db:
+        if order_id:
+            await db.execute(
+                "UPDATE trades SET status = ?, order_id = ? WHERE id = ?",
+                (status, order_id, trade_id),
+            )
+        else:
+            await db.execute(
+                "UPDATE trades SET status = ? WHERE id = ?",
+                (status, trade_id),
+            )
+        await db.commit()
+
+
+async def resolve_trade(trade_id: int, outcome: str, is_win: bool, pnl: float) -> None:
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(_db()) as db:
+        await db.execute(
+            "UPDATE trades SET outcome = ?, is_win = ?, pnl = ?, resolved_at = ? WHERE id = ?",
+            (outcome, 1 if is_win else 0, pnl, now, trade_id),
+        )
+        await db.commit()
+
+
+async def get_recent_trades(n: int = 10) -> list[dict[str, Any]]:
+    async with aiosqlite.connect(_db()) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM trades ORDER BY id DESC LIMIT ?", (n,)
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def get_unresolved_trades() -> list[dict[str, Any]]:
+    async with aiosqlite.connect(_db()) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM trades WHERE is_win IS NULL AND status IN ('pending', 'filled') ORDER BY id"
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def get_trade_by_signal(signal_id: int) -> dict[str, Any] | None:
+    async with aiosqlite.connect(_db()) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM trades WHERE signal_id = ? LIMIT 1", (signal_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# Streak helpers
+# ---------------------------------------------------------------------------
+
+def _compute_streaks(results: list[int]) -> dict[str, Any]:
+    """Given a list of 1/0 (win/loss) in chronological order, compute streaks."""
+    if not results:
+        return {
+            "current_streak": 0,
+            "current_streak_type": None,
+            "best_win_streak": 0,
+            "worst_loss_streak": 0,
+        }
+
+    current = 1
+    current_type = results[-1]
+    best_win = 0
+    worst_loss = 0
+    streak = 1
+    prev = results[0]
+
+    for i in range(len(results)):
+        if i == 0:
+            streak = 1
+        elif results[i] == prev:
+            streak += 1
+        else:
+            streak = 1
+        prev = results[i]
+        if results[i] == 1:
+            best_win = max(best_win, streak)
+        else:
+            worst_loss = max(worst_loss, streak)
+
+    # compute current streak from the end
+    current_type = results[-1]
+    current = 0
+    for v in reversed(results):
+        if v == current_type:
+            current += 1
+        else:
+            break
+
+    return {
+        "current_streak": current,
+        "current_streak_type": "W" if current_type == 1 else "L",
+        "best_win_streak": best_win,
+        "worst_loss_streak": worst_loss,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Analytics
+# ---------------------------------------------------------------------------
+
+async def get_signal_stats(limit: int | None = None) -> dict[str, Any]:
+    async with aiosqlite.connect(_db()) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Total signals (non-skipped)
+        q = "SELECT COUNT(*) as cnt FROM signals WHERE skipped = 0"
+        row = await (await db.execute(q)).fetchone()
+        total = row["cnt"]
+
+        # Skip count
+        q2 = "SELECT COUNT(*) as cnt FROM signals WHERE skipped = 1"
+        row2 = await (await db.execute(q2)).fetchone()
+        skip_count = row2["cnt"]
+
+        # Resolved signals for stats
+        order_clause = "ORDER BY id ASC"
+        limit_clause = ""
+        if limit:
+            # We need the LAST N resolved signals — subquery to get them in order
+            inner = (
+                f"SELECT * FROM signals WHERE skipped = 0 AND is_win IS NOT NULL "
+                f"ORDER BY id DESC LIMIT {limit}"
+            )
+            query = f"SELECT is_win FROM ({inner}) ORDER BY id ASC"
+        else:
+            query = (
+                "SELECT is_win FROM signals WHERE skipped = 0 AND is_win IS NOT NULL "
+                "ORDER BY id ASC"
+            )
+
+        cursor = await db.execute(query)
+        rows = await cursor.fetchall()
+        results = [r["is_win"] for r in rows]
+
+    wins = sum(1 for r in results if r == 1)
+    losses = sum(1 for r in results if r == 0)
+    resolved = wins + losses
+    win_pct = (wins / resolved * 100) if resolved else 0.0
+    streaks = _compute_streaks(results)
+
+    return {
+        "total_signals": total,
+        "skip_count": skip_count,
+        "wins": wins,
+        "losses": losses,
+        "resolved": resolved,
+        "win_pct": round(win_pct, 1),
+        **streaks,
+    }
+
+
+async def get_trade_stats(limit: int | None = None) -> dict[str, Any]:
+    async with aiosqlite.connect(_db()) as db:
+        db.row_factory = aiosqlite.Row
+
+        if limit:
+            inner = (
+                f"SELECT * FROM trades WHERE is_win IS NOT NULL "
+                f"ORDER BY id DESC LIMIT {limit}"
+            )
+            query = f"SELECT is_win, amount_usdc, pnl FROM ({inner}) ORDER BY id ASC"
+        else:
+            query = (
+                "SELECT is_win, amount_usdc, pnl FROM trades "
+                "WHERE is_win IS NOT NULL ORDER BY id ASC"
+            )
+
+        cursor = await db.execute(query)
+        rows = await cursor.fetchall()
+
+        total_q = "SELECT COUNT(*) as cnt FROM trades"
+        total_row = await (await db.execute(total_q)).fetchone()
+        total_trades = total_row["cnt"]
+
+    results = [r["is_win"] for r in rows]
+    wins = sum(1 for r in results if r == 1)
+    losses = sum(1 for r in results if r == 0)
+    resolved = wins + losses
+    win_pct = (wins / resolved * 100) if resolved else 0.0
+
+    total_deployed = sum(r["amount_usdc"] for r in rows)
+    total_pnl = sum(r["pnl"] for r in rows if r["pnl"] is not None)
+    total_returned = total_deployed + total_pnl
+    roi_pct = (total_pnl / total_deployed * 100) if total_deployed else 0.0
+
+    streaks = _compute_streaks(results)
+
+    return {
+        "total_trades": total_trades,
+        "wins": wins,
+        "losses": losses,
+        "resolved": resolved,
+        "win_pct": round(win_pct, 1),
+        "total_deployed": round(total_deployed, 2),
+        "total_returned": round(total_returned, 2),
+        "net_pnl": round(total_pnl, 2),
+        "roi_pct": round(roi_pct, 1),
+        **streaks,
+    }

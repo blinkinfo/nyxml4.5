@@ -1,0 +1,79 @@
+"""AutoPoly entry point — init DB, start Telegram bot + scheduler."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import sys
+
+from telegram.ext import Application
+
+import config as cfg
+from bot import handlers
+from core.scheduler import recover_unresolved, start_scheduler
+from db.models import init_db
+from polymarket.client import PolymarketClient
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger("autopoly")
+
+
+def _validate_config() -> bool:
+    ok = True
+    for name in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+                 "POLYMARKET_PRIVATE_KEY", "POLYMARKET_FUNDER_ADDRESS"):
+        if not getattr(cfg, name, None):
+            log.error("Missing required env var: %s", name)
+            ok = False
+    return ok
+
+
+def main() -> None:
+    if not _validate_config():
+        sys.exit(1)
+
+    # 1. Init DB synchronously first (create tables, seed defaults)
+    asyncio.run(init_db())
+    log.info("Database initialised at %s", cfg.DB_PATH)
+
+    # 2. Init Polymarket client (synchronous — derives creds)
+    poly_client: PolymarketClient | None = None
+    try:
+        poly_client = PolymarketClient(cfg)
+        log.info("Polymarket client ready.")
+    except Exception:
+        log.exception("Failed to initialise Polymarket client — trading disabled")
+
+    # 3. Build Telegram Application with post_init hook
+    async def post_init(application: Application) -> None:
+        """Called after the Application is initialised but before polling starts."""
+        log.info("Bot post_init: recovering unresolved signals...")
+        await recover_unresolved()
+        log.info("Post-init: starting scheduler...")
+        start_scheduler(application, poly_client)
+        log.info("Scheduler started inside bot event loop.")
+
+    application = (
+        Application.builder()
+        .token(cfg.TELEGRAM_BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
+
+    # 4. Register handlers & inject poly client
+    handlers.set_poly_client(poly_client)
+    handlers.set_start_time()
+    handlers.register(application)
+
+    # 5. Run polling (blocks until stopped)
+    #    Both scheduler and bot run in the same async event loop.
+    log.info("Starting Telegram bot polling...")
+    application.run_polling(drop_pending_updates=True)
+
+
+if __name__ == "__main__":
+    main()
