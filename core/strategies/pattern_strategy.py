@@ -2,8 +2,8 @@
 
 Flow:
 1. Fetch the most recently *closed* 5-min BTC-USD candles from Coinbase
-2. Read directions of up to 7 most recent fully closed candles
-3. Build pattern strings at depth 7, 6, and 5 (longest-first greedy match)
+2. Read directions of up to 9 most recent fully closed candles
+3. Build pattern strings at depth 9 and 8 (longest-first greedy match)
 4. Look up string in pattern table
 5. If match -> trade predicted direction for N+1 candle
 6. If no match -> skip
@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Pattern table
 # ---------------------------------------------------------------------------
-# Key format: variable-length string (4-7 characters) where each character
+# Key format: variable-length string (8-9 characters) where each character
 # represents one 5-min BTC-USD candle direction.  Characters are ordered
 # LEFT-TO-RIGHT as:
 #   [N-1][N-2]...[N-k]
@@ -45,33 +45,138 @@ log = logging.getLogger(__name__)
 # U = close >= open (up), D = close < open (down).
 # Value = predicted direction for the NEXT candle (N+1): "UP" or "DOWN".
 #
-# Scan order: [_PATTERN_DEPTHS] longest-first (7 > 6 > 5).  Greedy -- the
+# Scan order: [_PATTERN_DEPTHS] longest-first (9 > 8).  Greedy -- the
 # first matching depth wins, giving highest specificity to longer patterns.
 
 PATTERN_TABLE: dict[str, str] = {
-    # -- 6-char patterns --
-    "DDDDDD": "UP",
-    "DUUUDU": "DOWN",
-    "DUUUUD": "DOWN",
-    "DUUUDD": "DOWN",
-    "UDDUUD": "UP",
-    "DUDUDU": "DOWN",
-    "DUDUUD": "UP",
-    "UUDUUU": "DOWN",
-    "DDUDDU": "UP",
-    "UUUDUD": "DOWN",
-    "DDDUUD": "DOWN",
-    "UDUUDU": "DOWN",
-    "DUUDDD": "UP",
-    "DDUDDD": "UP",
-    "DUDDDU": "DOWN",
-    # -- 7-char patterns --
-    "DDDUDDD": "UP",
-    "DUDDDDD": "UP",
-    "UDUUUUU": "UP",
-    "UDUUUUD": "DOWN",
-    # -- 5-char patterns --
-    "DDDUU": "DOWN",
+    # -- 9-char patterns (103) --
+    "UUDDDDDUD": "UP",
+    "DDDUDDDUD": "UP",
+    "DDUDDDDUD": "UP",
+    "UDDUDDDDU": "UP",
+    "DDDDDDDUD": "UP",
+    "DDUDDDUDD": "UP",
+    "DDUUUUUDD": "UP",
+    "UUUDUDDUU": "DOWN",
+    "DDDUDUDUU": "UP",
+    "DUDUDUUUD": "DOWN",
+    "DUUUUDUUD": "DOWN",
+    "UDUUUDUUU": "DOWN",
+    "DDUDDUUDU": "UP",
+    "UUUDDUUUU": "DOWN",
+    "DDUUUDUUU": "UP",
+    "UDDDUUUDD": "DOWN",
+    "UDDUDDUUD": "UP",
+    "UUDUDDDUD": "DOWN",
+    "UUUUUUDDU": "DOWN",
+    "DDDDDUDDD": "DOWN",
+    "UDUDDUDUU": "UP",
+    "UUDDDDDDD": "DOWN",
+    "UUDUUDDDD": "UP",
+    "UUUDUUUDU": "DOWN",
+    "DDDUUDDDD": "UP",
+    "UDDDUUDUU": "UP",
+    "UDDDUUDDU": "UP",
+    "DUUUUDDUU": "DOWN",
+    "DDDDDUUDD": "DOWN",
+    "UDDDDDDUU": "DOWN",
+    "UUUDUDDDU": "UP",
+    "DUDUUUUUU": "UP",
+    "DUUUUUUUD": "UP",
+    "UDUUUDDDD": "DOWN",
+    "UDDUUDDUD": "UP",
+    "UDDDUUDDD": "DOWN",
+    "UUUDDDDDU": "DOWN",
+    "UDDUDUDUD": "UP",
+    "DDDUDUDDU": "UP",
+    "DUDUDDUDD": "UP",
+    "DUDDDUDUU": "UP",
+    "DDDUUUUUU": "DOWN",
+    "UDUDDDUUD": "UP",
+    "UDUDDDUUU": "DOWN",
+    "UUDUDDUUD": "DOWN",
+    "DDUDUDDDD": "UP",
+    "UUUDUUUUD": "DOWN",
+    "UDDUDDUDU": "UP",
+    "DUUUDDDUD": "UP",
+    "UDDDDUUDU": "DOWN",
+    "UDUUDUUUD": "DOWN",
+    "UUDUDUUUD": "UP",
+    "UUUUDDDDD": "UP",
+    "UUUUUDDDU": "DOWN",
+    "DUUUDDUUU": "DOWN",
+    "UDDUUUUUD": "UP",
+    "DUDDDDDUD": "UP",
+    "DDUDUDUDU": "DOWN",
+    "UUDUDUUDD": "DOWN",
+    "DDDDUUDUU": "UP",
+    "DDDUDUDDD": "DOWN",
+    "UUDUDUDUU": "DOWN",
+    "UDDUUUUDD": "DOWN",
+    "DUUUDUDDD": "DOWN",
+    "DDDDUUUUU": "DOWN",
+    "DUUDDUDDU": "DOWN",
+    "UDUDDDDDD": "UP",
+    "UUDDDDDDU": "DOWN",
+    "UUDDDDUDD": "UP",
+    "UUDDDDUUD": "UP",
+    "DUUUUDDDD": "DOWN",
+    "UDUUUUUDD": "UP",
+    "DDUUDUDUU": "UP",
+    "DUDUDDDUU": "UP",
+    "DUUUUUUDU": "UP",
+    "DDUUDDUUD": "UP",
+    "UUUDUDDUD": "DOWN",
+    "DUUDDDUDD": "UP",
+    "UDDDUUUUU": "DOWN",
+    "DDUUUDDUU": "DOWN",
+    "DDUDUUDDD": "UP",
+    "UUDDDUDUD": "UP",
+    "UUUDUDUUU": "DOWN",
+    "DUDDUDUUD": "UP",
+    "UUUDDUUDD": "DOWN",
+    "DUDDDDDDU": "UP",
+    "DUUDUDDDU": "DOWN",
+    "UDUDUDUDD": "DOWN",
+    "DDDDUDDDU": "UP",
+    "DDDUUUUDD": "DOWN",
+    "DUUUDDUUD": "DOWN",
+    "DDDDDUUDU": "UP",
+    "UUDUUDUDD": "DOWN",
+    "DUDUUDUDD": "UP",
+    "UUUUUDDDD": "DOWN",
+    "DDDDUDDUU": "UP",
+    "UDDDUDDDU": "UP",
+    "DDDUDDUDD": "UP",
+    "DUDUUDDDD": "UP",
+    "UDUUUDUDU": "DOWN",
+    "UUDUDDDUU": "DOWN",
+    "DDUDDDDDD": "UP",
+    "DUUUDUUUD": "DOWN",
+    # -- 8-char patterns (23) --
+    "UUUDUDDU": "DOWN",
+    "UUDDDDDD": "DOWN",
+    "DDUDDDUD": "UP",
+    "UUUDDUUU": "DOWN",
+    "DDDDDDDU": "UP",
+    "DDDUDDDU": "UP",
+    "DDUUUUUD": "UP",
+    "UUDUDDDU": "DOWN",
+    "DDUDDDDU": "UP",
+    "UUUUUUDD": "DOWN",
+    "UDDUDUDU": "UP",
+    "UUUUUDDD": "DOWN",
+    "UUUDDDDD": "DOWN",
+    "DUUUDDUU": "DOWN",
+    "DUUUUDUU": "DOWN",
+    "DUUUUUUU": "UP",
+    "UDUUUDUU": "DOWN",
+    "UDDUUDDU": "UP",
+    "UUDUDDUU": "DOWN",
+    "DDUDDUUD": "UP",
+    "DUDUDUUU": "DOWN",
+    "DUUDDDUD": "UP",
+    "DDDDUUDU": "UP",
 }
 
 
@@ -79,7 +184,7 @@ PATTERN_TABLE: dict[str, str] = {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-async def _fetch_candles(count: int = 12) -> list[dict[str, float]] | None:
+async def _fetch_candles(count: int = 14) -> list[dict[str, float]] | None:
     """Fetch the *count* most recently CONFIRMED-CLOSED 5-min BTC-USD candles.
 
     Implementation details
@@ -155,7 +260,7 @@ async def _fetch_candles(count: int = 12) -> list[dict[str, float]] | None:
     return confirmed_closed[-count:]
 
 
-def _build_pattern_string(candles: list[dict[str, float]], depth: int = 6) -> str | None:
+def _build_pattern_string(candles: list[dict[str, float]], depth: int = 9) -> str | None:
     """Build a *depth*-character pattern string from candle directions.
 
     Expects *candles* sorted oldest-first.  Reads the last *depth* entries.
@@ -168,7 +273,7 @@ def _build_pattern_string(candles: list[dict[str, float]], depth: int = 6) -> st
 
     This matches the PATTERN_TABLE key format: [N-1][N-2]...[N-k].
 
-    Supported depths: 5, 6, 7 (configured via _PATTERN_DEPTHS).
+    Supported depths: 8, 9 (configured via _PATTERN_DEPTHS).
     """
     if len(candles) < depth:
         log.warning(
@@ -193,7 +298,7 @@ def _build_pattern_string(candles: list[dict[str, float]], depth: int = 6) -> st
 class PatternStrategy(BaseStrategy):
     """Multi-depth historical pattern matching strategy.
 
-    Scans candle history at multiple depths (7, 6, 5) using a longest-first
+    Scans candle history at multiple depths (9, 8) using a longest-first
     greedy match.  Returns either:
       - None                  on hard failure (network, parse error)
       - {"skipped": True, ...}  when no pattern matches at any depth
@@ -202,10 +307,10 @@ class PatternStrategy(BaseStrategy):
 
     # Number of confirmed-closed candles to fetch from Coinbase.
     # Must be >= max(_PATTERN_DEPTHS) + 1 so the safety drop still leaves enough.
-    _CANDLE_FETCH_COUNT: int = 12
+    _CANDLE_FETCH_COUNT: int = 14
 
     # Depths to scan, checked longest-first (greedy match).
-    _PATTERN_DEPTHS: list[int] = [7, 6, 5]
+    _PATTERN_DEPTHS: list[int] = [9, 8]
 
     async def check_signal(self) -> dict[str, Any] | None:
         """Generate a pattern-based signal for slot N+1.
@@ -214,7 +319,7 @@ class PatternStrategy(BaseStrategy):
 
         Steps:
           1. Fetch confirmed-closed BTC-USD 5-min candles
-          2. Build pattern strings at depths 7, 6, 5 (longest-first)
+          2. Build pattern strings at depths 9, 8 (longest-first)
           3. Look up each pattern in PATTERN_TABLE; first match wins
           4. On match: fetch Polymarket prices, return full signal dict
           5. On no match: return skip dict (no trade placed)
