@@ -2,13 +2,13 @@
 
 Flow:
 1. Fetch the most recently *closed* 5-min BTC-USD candles from Coinbase
-2. Read directions of up to 9 most recent fully closed candles
-3. Build pattern strings at depth 9 and 8 (longest-first greedy match)
+2. Read directions of up to 10 most recent fully closed candles
+3. Build pattern strings at depth 10 and 9 (longest-first greedy match)
 4. Look up string in pattern table
 5. If match -> trade predicted direction for N+1 candle
 6. If no match -> skip
 
-Candle direction: close >= open means U (up), close < open means D (down).
+Candle direction: close > open means U (up), close <= open means D (down).
 
 CANDLE TIMING SAFETY
 --------------------
@@ -37,146 +37,267 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Pattern table
 # ---------------------------------------------------------------------------
-# Key format: variable-length string (8-9 characters) where each character
+# Key format: variable-length string (9-10 characters) where each character
 # represents one 5-min BTC-USD candle direction.  Characters are ordered
 # LEFT-TO-RIGHT as:
 #   [N-1][N-2]...[N-k]
 # where N-1 is the most-recently CLOSED candle and N-k is the oldest.
-# U = close >= open (up), D = close < open (down).
+# U = close > open (up), D = close <= open (down).
 # Value = predicted direction for the NEXT candle (N+1): "UP" or "DOWN".
 #
-# Scan order: [_PATTERN_DEPTHS] longest-first (9 > 8).  Greedy -- the
+# Scan order: [_PATTERN_DEPTHS] longest-first (10 > 9).  Greedy -- the
 # first matching depth wins, giving highest specificity to longer patterns.
 
 PATTERN_TABLE: dict[str, str] = {
-    # -- 9-char patterns (103) --
-    "UUDDDDDUD": "UP",
-    "DDDUDDDUD": "UP",
-    "DDUDDDDUD": "UP",
-    "UDDUDDDDU": "UP",
+    # -- 10-char patterns (201) --
+    "DDDDDDDUDU": "UP",
+    "DDDDDUDUDU": "DOWN",
+    "DDDDDUUDUU": "UP",
+    "DDDDDUUUDU": "DOWN",
+    "DDDDDUUUUD": "DOWN",
+    "DDDDUUDUDD": "UP",
+    "DDDDUUDUUD": "UP",
+    "DDDDUUUDDU": "DOWN",
+    "DDDUDDDDUD": "DOWN",
+    "DDDUDDUUDU": "UP",
+    "DDDUDUDDDU": "DOWN",
+    "DDDUDUDUUU": "UP",
+    "DDDUDUUUDD": "UP",
+    "DDDUUDDUUD": "UP",
+    "DDDUUDUUUU": "DOWN",
+    "DDDUUUDDDD": "DOWN",
+    "DDDUUUDUDD": "DOWN",
+    "DDUDDDDUDD": "UP",
+    "DDUDDDDUDU": "UP",
+    "DDUDDDDUUD": "UP",
+    "DDUDDDUUDU": "UP",
+    "DDUDDUDUDU": "UP",
+    "DDUDDUDUUU": "UP",
+    "DDUDDUUDUD": "UP",
+    "DDUDDUUUUU": "DOWN",
+    "DDUDUDDUDD": "UP",
+    "DDUDUDDUUU": "UP",
+    "DDUDUDUDUU": "DOWN",
+    "DDUDUUDDDD": "UP",
+    "DDUUDDDUDD": "UP",
+    "DDUUDDDUUD": "DOWN",
+    "DDUUDDUUDD": "UP",
+    "DDUUDUDDUD": "UP",
+    "DDUUDUUDDU": "UP",
+    "DDUUDUUUUD": "DOWN",
+    "DDUUUDDUUD": "UP",
+    "DDUUUDDUUU": "DOWN",
+    "DDUUUDUUUU": "UP",
+    "DDUUUUDDUD": "UP",
+    "DDUUUUDUUU": "DOWN",
+    "DDUUUUUDDD": "UP",
+    "DDUUUUUDDU": "UP",
+    "DUDDDDDDDU": "UP",
+    "DUDDDDDUDD": "UP",
+    "DUDDDDDUUU": "UP",
+    "DUDDDDUDUD": "DOWN",
+    "DUDDDUDUUD": "UP",
+    "DUDDDUUUUU": "UP",
+    "DUDDUDDDDD": "DOWN",
+    "DUDDUDDUDU": "UP",
+    "DUDDUDDUUU": "UP",
+    "DUDDUDUUDD": "UP",
+    "DUDDUUDUUU": "UP",
+    "DUDUDDDUDD": "UP",
+    "DUDUDDUDDU": "UP",
+    "DUDUDUDUUD": "UP",
+    "DUDUDUDUUU": "DOWN",
+    "DUDUDUUDDD": "UP",
+    "DUDUDUUUDD": "DOWN",
+    "DUDUDUUUDU": "DOWN",
+    "DUDUUDDDUD": "UP",
+    "DUDUUDDUDD": "UP",
+    "DUDUUDUDUD": "UP",
+    "DUDUUDUUDU": "DOWN",
+    "DUDUUUDDDD": "UP",
+    "DUDUUUUUDU": "DOWN",
+    "DUUDDDDDDD": "DOWN",
+    "DUUDDDUDDD": "UP",
+    "DUUDDDUDUU": "UP",
+    "DUUDDDUUUU": "UP",
+    "DUUDUDDDUD": "DOWN",
+    "DUUDUDDUDD": "UP",
+    "DUUDUDUDDD": "DOWN",
+    "DUUDUDUUUU": "UP",
+    "DUUDUUDDUD": "UP",
+    "DUUDUUDDUU": "DOWN",
+    "DUUDUUUDDD": "UP",
+    "DUUDUUUUDU": "UP",
+    "DUUDUUUUUD": "DOWN",
+    "DUUUDDDUDD": "UP",
+    "DUUUDDDUUU": "DOWN",
+    "DUUUDDUUDU": "DOWN",
+    "DUUUDDUUUU": "DOWN",
+    "DUUUDUDUDD": "UP",
+    "DUUUDUUUDU": "DOWN",
+    "DUUUUDDDDD": "DOWN",
+    "DUUUUDDUUU": "DOWN",
+    "DUUUUDUUDD": "DOWN",
+    "DUUUUDUUDU": "DOWN",
+    "DUUUUUUDUU": "UP",
+    "UDDDDDUUDD": "UP",
+    "UDDDDDUUDU": "DOWN",
+    "UDDDDUDDUU": "UP",
+    "UDDDDUDUDD": "DOWN",
+    "UDDDDUDUDU": "UP",
+    "UDDDDUUDUD": "DOWN",
+    "UDDDDUUDUU": "DOWN",
+    "UDDDUDDUUD": "UP",
+    "UDDDUUDDDD": "DOWN",
+    "UDDDUUDDUD": "UP",
+    "UDDDUUDUUD": "UP",
+    "UDDDUUUDDU": "DOWN",
+    "UDDUDDDDDD": "DOWN",
+    "UDDUDDDDUD": "UP",
+    "UDDUDDDDUU": "UP",
+    "UDDUDDUDDU": "UP",
+    "UDDUDDUDUD": "UP",
+    "UDDUDDUUDU": "UP",
+    "UDDUDUDUDD": "UP",
+    "UDDUDUDUUD": "UP",
+    "UDDUDUUDDD": "UP",
+    "UDDUDUUUDD": "DOWN",
+    "UDDUUDDDUD": "DOWN",
+    "UDDUUDDDUU": "UP",
+    "UDDUUDDUUU": "UP",
+    "UDDUUDUDUU": "UP",
+    "UDDUUUDDUD": "DOWN",
+    "UDDUUUDDUU": "UP",
+    "UDDUUUDUDD": "DOWN",
+    "UDDUUUUDDD": "DOWN",
+    "UDDUUUUUDU": "UP",
+    "UDUDDDDUUU": "UP",
+    "UDUDDDUUDD": "UP",
+    "UDUDDDUUDU": "UP",
+    "UDUDDDUUUD": "DOWN",
+    "UDUDDDUUUU": "DOWN",
+    "UDUDDUDDDU": "UP",
+    "UDUDDUDUDD": "UP",
+    "UDUDDUDUDU": "DOWN",
+    "UDUDDUDUUD": "UP",
+    "UDUDDUUDUD": "UP",
+    "UDUDUDUDDD": "DOWN",
+    "UDUDUDUDUU": "DOWN",
+    "UDUDUDUUUD": "DOWN",
+    "UDUDUUDDUU": "UP",
+    "UDUUDDDDUD": "UP",
+    "UDUUDDDUDD": "UP",
+    "UDUUDDDUDU": "DOWN",
+    "UDUUDDDUUD": "UP",
+    "UDUUDDUUUU": "DOWN",
+    "UDUUDUDUDD": "DOWN",
+    "UDUUDUDUDU": "UP",
+    "UDUUDUDUUD": "DOWN",
+    "UDUUDUUDUD": "DOWN",
+    "UDUUUDDDDU": "DOWN",
+    "UDUUUDUDDU": "DOWN",
+    "UDUUUDUDUD": "DOWN",
+    "UDUUUDUUUD": "DOWN",
+    "UDUUUUDDUU": "DOWN",
+    "UDUUUUDUUD": "UP",
+    "UUDDDDDDDD": "DOWN",
+    "UUDDDDDDDU": "DOWN",
+    "UUDDDDDDUU": "DOWN",
+    "UUDDDDDUDU": "UP",
+    "UUDDDDUDDU": "UP",
+    "UUDDDDUUDU": "UP",
+    "UUDDDDUUUU": "DOWN",
+    "UUDDDUDUDU": "UP",
+    "UUDDDUDUUD": "UP",
+    "UUDDDUUDDD": "UP",
+    "UUDDDUUDUD": "UP",
+    "UUDDUDDUUU": "DOWN",
+    "UUDDUDUUDD": "UP",
+    "UUDDUDUUUD": "UP",
+    "UUDDUUDDUD": "DOWN",
+    "UUDDUUDUDU": "DOWN",
+    "UUDUDDDUDU": "DOWN",
+    "UUDUDDDUUU": "DOWN",
+    "UUDUDDUUDD": "DOWN",
+    "UUDUDDUUDU": "DOWN",
+    "UUDUDDUUUD": "DOWN",
+    "UUDUDUDDUU": "DOWN",
+    "UUDUDUDUUD": "DOWN",
+    "UUDUDUUDDU": "DOWN",
+    "UUDUDUUUDU": "UP",
+    "UUDUUDDUUU": "DOWN",
+    "UUDUUDUDDU": "DOWN",
+    "UUDUUDUDUD": "DOWN",
+    "UUDUUDUUDU": "UP",
+    "UUUDDDDDUU": "DOWN",
+    "UUUDDDUUUD": "UP",
+    "UUUDDUUDDD": "DOWN",
+    "UUUDDUUUDU": "DOWN",
+    "UUUDDUUUUD": "DOWN",
+    "UUUDUDDDUD": "UP",
+    "UUUDUDDUDU": "DOWN",
+    "UUUDUDUDUD": "DOWN",
+    "UUUDUDUUDD": "DOWN",
+    "UUUDUUDDDD": "UP",
+    "UUUDUUDDUD": "DOWN",
+    "UUUDUUDDUU": "UP",
+    "UUUDUUUDUD": "DOWN",
+    "UUUDUUUUUD": "DOWN",
+    "UUUUDDDUUD": "DOWN",
+    "UUUUDDUDUD": "DOWN",
+    "UUUUDDUDUU": "UP",
+    "UUUUDUUUUU": "DOWN",
+    "UUUUUDDUDU": "UP",
+    "UUUUUDDUUU": "DOWN",
+    "UUUUUDUUDD": "DOWN",
+    "UUUUUUDDDD": "DOWN",
+    # -- 9-char patterns (46) --
     "DDDDDDDUD": "UP",
-    "DDUDDDUDD": "UP",
-    "DDUUUUUDD": "UP",
-    "UUUDUDDUU": "DOWN",
-    "DDDUDUDUU": "UP",
-    "DUDUDUUUD": "DOWN",
-    "DUUUUDUUD": "DOWN",
-    "UDUUUDUUU": "DOWN",
-    "DDUDDUUDU": "UP",
-    "UUUDDUUUU": "DOWN",
-    "DDUUUDUUU": "UP",
-    "UDDDUUUDD": "DOWN",
-    "UDDUDDUUD": "UP",
-    "UUDUDDDUD": "DOWN",
-    "UUUUUUDDU": "DOWN",
-    "DDDDDUDDD": "DOWN",
-    "UDUDDUDUU": "UP",
-    "UUDDDDDDD": "DOWN",
-    "UUDUUDDDD": "UP",
-    "UUUDUUUDU": "DOWN",
-    "DDDUUDDDD": "UP",
-    "UDDDUUDUU": "UP",
-    "UDDDUUDDU": "UP",
-    "DUUUUDDUU": "DOWN",
     "DDDDDUUDD": "DOWN",
-    "UDDDDDDUU": "DOWN",
-    "UUUDUDDDU": "UP",
-    "DUDUUUUUU": "UP",
-    "DUUUUUUUD": "UP",
-    "UDUUUDDDD": "DOWN",
-    "UDDUUDDUD": "UP",
-    "UDDDUUDDD": "DOWN",
-    "UUUDDDDDU": "DOWN",
-    "UDDUDUDUD": "UP",
-    "DDDUDUDDU": "UP",
-    "DUDUDDUDD": "UP",
-    "DUDDDUDUU": "UP",
-    "DDDUUUUUU": "DOWN",
-    "UDUDDDUUD": "UP",
-    "UDUDDDUUU": "DOWN",
-    "UUDUDDUUD": "DOWN",
-    "DDUDUDDDD": "UP",
-    "UUUDUUUUD": "DOWN",
-    "UDDUDDUDU": "UP",
-    "DUUUDDDUD": "UP",
-    "UDDDDUUDU": "DOWN",
-    "UDUUDUUUD": "DOWN",
-    "UUDUDUUUD": "UP",
-    "UUUUDDDDD": "UP",
-    "UUUUUDDDU": "DOWN",
-    "DUUUDDUUU": "DOWN",
-    "UDDUUUUUD": "UP",
-    "DUDDDDDUD": "UP",
-    "DDUDUDUDU": "DOWN",
-    "UUDUDUUDD": "DOWN",
     "DDDDUUDUU": "UP",
     "DDDUDUDDD": "DOWN",
-    "UUDUDUDUU": "DOWN",
-    "UDDUUUUDD": "DOWN",
-    "DUUUDUDDD": "DOWN",
-    "DDDDUUUUU": "DOWN",
+    "DDDUDUDDU": "UP",
+    "DDDUDUDUU": "UP",
+    "DDDUUDDDD": "UP",
+    "DDDUUUUUU": "DOWN",
+    "DDUDDDUDD": "UP",
+    "DDUDDUUDU": "UP",
+    "DDUDUDUDU": "DOWN",
+    "DDUUUDUUU": "UP",
+    "DUDDDDDUD": "UP",
+    "DUDDDUDUU": "UP",
+    "DUDUDDUDD": "UP",
+    "DUDUUUUUU": "UP",
     "DUUDDUDDU": "DOWN",
-    "UDUDDDDDD": "UP",
-    "UUDDDDDDU": "DOWN",
-    "UUDDDDUDD": "UP",
-    "UUDDDDUUD": "UP",
-    "DUUUUDDDD": "DOWN",
-    "UDUUUUUDD": "UP",
-    "DDUUDUDUU": "UP",
-    "DUDUDDDUU": "UP",
-    "DUUUUUUDU": "UP",
-    "DDUUDDUUD": "UP",
-    "UUUDUDDUD": "DOWN",
-    "DUUDDDUDD": "UP",
-    "UDDDUUUUU": "DOWN",
-    "DDUUUDDUU": "DOWN",
-    "DDUDUUDDD": "UP",
-    "UUDDDUDUD": "UP",
-    "UUUDUDUUU": "DOWN",
-    "DUDDUDUUD": "UP",
-    "UUUDDUUDD": "DOWN",
-    "DUDDDDDDU": "UP",
-    "DUUDUDDDU": "DOWN",
-    "UDUDUDUDD": "DOWN",
-    "DDDDUDDDU": "UP",
-    "DDDUUUUDD": "DOWN",
-    "DUUUDDUUD": "DOWN",
-    "DDDDDUUDU": "UP",
-    "UUDUUDUDD": "DOWN",
-    "DUDUUDUDD": "UP",
-    "UUUUUDDDD": "DOWN",
-    "DDDDUDDUU": "UP",
-    "UDDDUDDDU": "UP",
-    "DDDUDDUDD": "UP",
-    "DUDUUDDDD": "UP",
-    "UDUUUDUDU": "DOWN",
-    "UUDUDDDUU": "DOWN",
-    "DDUDDDDDD": "UP",
-    "DUUUDUUUD": "DOWN",
-    # -- 8-char patterns (23) --
-    "UUUDUDDU": "DOWN",
-    "UUDDDDDD": "DOWN",
-    "DDUDDDUD": "UP",
-    "UUUDDUUU": "DOWN",
-    "DDDDDDDU": "UP",
-    "DDDUDDDU": "UP",
-    "DDUUUUUD": "UP",
-    "UUDUDDDU": "DOWN",
-    "DDUDDDDU": "UP",
-    "UUUUUUDD": "DOWN",
-    "UDDUDUDU": "UP",
-    "UUUUUDDD": "DOWN",
-    "UUUDDDDD": "DOWN",
-    "DUUUDDUU": "DOWN",
-    "DUUUUDUU": "DOWN",
-    "DUUUUUUU": "UP",
-    "UDUUUDUU": "DOWN",
-    "UDDUUDDU": "UP",
-    "UUDUDDUU": "DOWN",
-    "DDUDDUUD": "UP",
-    "DUDUDUUU": "DOWN",
-    "DUUDDDUD": "UP",
-    "DDDDUUDU": "UP",
+    "DUUUDDDUD": "UP",
+    "DUUUDDUUU": "DOWN",
+    "DUUUUUUUD": "UP",
+    "UDDDDDDUU": "DOWN",
+    "UDDDUUDDD": "DOWN",
+    "UDDDUUDDU": "UP",
+    "UDDDUUUDD": "DOWN",
+    "UDDUDDUDU": "UP",
+    "UDDUDDUUD": "UP",
+    "UDDUDUDUD": "UP",
+    "UDDUUUUDD": "DOWN",
+    "UDDUUUUUD": "UP",
+    "UDUDDUDUU": "UP",
+    "UDUUUDDDD": "DOWN",
+    "UDUUUDUUU": "DOWN",
+    "UUDDDDDUD": "UP",
+    "UUDUDDDUD": "DOWN",
+    "UUDUDUDUU": "DOWN",
+    "UUDUDUUDD": "DOWN",
+    "UUDUDUUUD": "UP",
+    "UUDUUDDDD": "UP",
+    "UUUDDDDDU": "DOWN",
+    "UUUDDUUUU": "DOWN",
+    "UUUDUDDDU": "UP",
+    "UUUDUDDUU": "DOWN",
+    "UUUDUUUDU": "DOWN",
+    "UUUDUUUUD": "DOWN",
+    "UUUUDDDDD": "UP",
+    "UUUUUDDDU": "DOWN",
 }
 
 
@@ -184,7 +305,7 @@ PATTERN_TABLE: dict[str, str] = {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-async def _fetch_candles(count: int = 14) -> list[dict[str, float]] | None:
+async def _fetch_candles(count: int = 15) -> list[dict[str, float]] | None:
     """Fetch the *count* most recently CONFIRMED-CLOSED 5-min BTC-USD candles.
 
     Implementation details
@@ -260,7 +381,7 @@ async def _fetch_candles(count: int = 14) -> list[dict[str, float]] | None:
     return confirmed_closed[-count:]
 
 
-def _build_pattern_string(candles: list[dict[str, float]], depth: int = 9) -> str | None:
+def _build_pattern_string(candles: list[dict[str, float]], depth: int = 10) -> str | None:
     """Build a *depth*-character pattern string from candle directions.
 
     Expects *candles* sorted oldest-first.  Reads the last *depth* entries.
@@ -273,7 +394,11 @@ def _build_pattern_string(candles: list[dict[str, float]], depth: int = 9) -> st
 
     This matches the PATTERN_TABLE key format: [N-1][N-2]...[N-k].
 
-    Supported depths: 8, 9 (configured via _PATTERN_DEPTHS).
+    Candle direction rule:
+      U = close > open  (strictly up)
+      D = close <= open (down or flat -- flat candles count as DOWN)
+
+    Supported depths: 9, 10 (configured via _PATTERN_DEPTHS).
     """
     if len(candles) < depth:
         log.warning(
@@ -285,7 +410,7 @@ def _build_pattern_string(candles: list[dict[str, float]], depth: int = 9) -> st
     pattern = ""
     for i in range(depth):
         candle = candles[-1 - i]
-        direction = "U" if candle["close"] >= candle["open"] else "D"
+        direction = "U" if candle["close"] > candle["open"] else "D"
         pattern += direction
 
     return pattern
@@ -298,7 +423,7 @@ def _build_pattern_string(candles: list[dict[str, float]], depth: int = 9) -> st
 class PatternStrategy(BaseStrategy):
     """Multi-depth historical pattern matching strategy.
 
-    Scans candle history at multiple depths (9, 8) using a longest-first
+    Scans candle history at multiple depths (10, 9) using a longest-first
     greedy match.  Returns either:
       - None                  on hard failure (network, parse error)
       - {"skipped": True, ...}  when no pattern matches at any depth
@@ -307,10 +432,11 @@ class PatternStrategy(BaseStrategy):
 
     # Number of confirmed-closed candles to fetch from Coinbase.
     # Must be >= max(_PATTERN_DEPTHS) + 1 so the safety drop still leaves enough.
-    _CANDLE_FETCH_COUNT: int = 14
+    # With max depth 10: fetch 15 -> drop 1 -> 14 confirmed-closed (covers depth 10).
+    _CANDLE_FETCH_COUNT: int = 15
 
     # Depths to scan, checked longest-first (greedy match).
-    _PATTERN_DEPTHS: list[int] = [9, 8]
+    _PATTERN_DEPTHS: list[int] = [10, 9]
 
     async def check_signal(self) -> dict[str, Any] | None:
         """Generate a pattern-based signal for slot N+1.
@@ -319,7 +445,7 @@ class PatternStrategy(BaseStrategy):
 
         Steps:
           1. Fetch confirmed-closed BTC-USD 5-min candles
-          2. Build pattern strings at depths 9, 8 (longest-first)
+          2. Build pattern strings at depths 10, 9 (longest-first)
           3. Look up each pattern in PATTERN_TABLE; first match wins
           4. On match: fetch Polymarket prices, return full signal dict
           5. On no match: return skip dict (no trade placed)
