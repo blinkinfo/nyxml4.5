@@ -31,7 +31,7 @@ def _get_strategy():
     """
     global _strategy
     if _strategy is None:
-        strategy_name = getattr(cfg, "STRATEGY_NAME", "pattern")
+        strategy_name = getattr(cfg, "STRATEGY_NAME", "ml")
         try:
             from core.strategies import get_strategy
             _strategy = get_strategy(strategy_name)

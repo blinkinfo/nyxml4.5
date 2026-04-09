@@ -179,7 +179,7 @@ The redeemer:
 | `AUTO_REDEEM_INTERVAL_MINUTES` | `5` | How often auto-redeem scans |
 | `POLYGON_RPC_URL` | `https://polygon-rpc.com` | RPC for on-chain redemptions |
 | `DB_PATH` | `autopoly.db` | SQLite database file |
-| `STRATEGY_NAME` | `pattern` | Active strategy module name |
+| `STRATEGY_NAME` | `ml` | Active strategy module name |
 | `BLOCKED_TRADE_HOURS_UTC` | `3,17` | UTC hours to skip trading (comma-separated) |
 
 ### Trade Sizing Modes
