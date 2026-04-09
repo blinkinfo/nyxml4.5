@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import html as _html
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -911,7 +912,7 @@ def register(application) -> None:
                 short = err_text[-800:] if len(err_text) > 800 else err_text
                 await context.bot.send_message(
                     chat_id=int(cfg.TELEGRAM_CHAT_ID),
-                    text=f"&#x26A0;&#xFE0F; <b>Unhandled Bot Error</b>\n<pre>{short}</pre>",
+                    text=f"&#x26A0;&#xFE0F; <b>Unhandled Bot Error</b>\n<pre>{_html.escape(short)}</pre>",
                     parse_mode="HTML",
                 )
         except Exception:

@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import html as _html
 from typing import Any
+
+
+def _e(value: object) -> str:
+    """Escape a value for safe inclusion in Telegram HTML messages."""
+    return _html.escape(str(value))
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +34,7 @@ def format_signal(
 
     pattern_line = ""
     if pattern:
-        pattern_line = f"\u2502 \U0001f522 Pattern: {pattern}\n"
+        pattern_line = f"\u2502 \U0001f522 Pattern: {_e(pattern)}\n"
 
     return (
         "\U0001f4e1 <b>Signal Fired!</b>\n"
@@ -48,12 +54,12 @@ def format_skip(
     pattern: str | None = None,
 ) -> str:
     """Skip notification when the strategy does not generate a trade signal."""
-    pattern_line = f" | Pattern: {pattern}" if pattern else ""
+    pattern_line = f" | Pattern: {_e(pattern)}" if pattern else ""
     return (
         "\u23ed\ufe0f <b>No Signal</b>\n"
         "\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
         f"\u2502 \u23f0 Slot: {slot_start_str}-{slot_end_str} UTC\n"
-        f"\u2502 {reason}{pattern_line}\n"
+        f"\u2502 {_e(reason)}{pattern_line}\n"
         "\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
     )
 
@@ -152,7 +158,7 @@ def format_trade_filled(
     oid_line = ""
     if order_id:
         oid_short = (order_id[:10] + "..." + order_id[-6:]) if len(order_id) > 16 else order_id
-        oid_line = f"\u2502 \U0001f9fe Order ID: <code>{oid_short}</code>\n"
+        oid_line = f"\u2502 \U0001f9fe Order ID: <code>{_e(oid_short)}</code>\n"
     return (
         f"\u2705 <b>Trade FILLED{attempt_note}</b>\n"
         "\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
@@ -178,7 +184,7 @@ def format_trade_unmatched(
         "\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
         f"\u2502 {side_emoji} Side: {side}  \u23f0 {slot_label}\n"
         f"\u2502 \U0001f504 Attempts: {attempts}\n"
-        f"\u2502 \U0001f4cb Reason: {reason}\n"
+        f"\u2502 \U0001f4cb Reason: {_e(reason)}\n"
         "\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
     )
 
@@ -194,7 +200,7 @@ def format_trade_aborted(
         "\u26d4 <b>Trade ABORTED</b>\n"
         "\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
         f"\u2502 {side_emoji} Side: {side}  \u23f0 {slot_label}\n"
-        f"\u2502 \U0001f4cb Reason: {reason}\n"
+        f"\u2502 \U0001f4cb Reason: {_e(reason)}\n"
         "\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
     )
 
@@ -210,7 +216,7 @@ def format_trade_retrying(
     side_emoji = "\U0001f4c8" if side == "Up" else "\U0001f4c9"
     return (
         f"\U0001f504 <b>Trade retrying</b> (attempt {attempt}/{max_attempts}) "
-        f"{side_emoji} {side} {slot_label} \u2014 {reason}"
+        f"{side_emoji} {side} {slot_label} \u2014 {_e(reason)}"
     )
 
 
@@ -236,7 +242,7 @@ def format_redeem_preview(results: list[dict]) -> str:
         SEP,
     ]
     for i, r in enumerate(results, 1):
-        title = (r.get("title") or r.get("condition_id", "Unknown"))[:60]
+        title = _e((r.get("title") or r.get("condition_id", "Unknown"))[:60])
         size  = r.get("size", 0)
         label = "\u2705 WON" if r.get("won") else "\u274c LOST"
         lines.append(f"{i}. {label}  {title}")
@@ -266,7 +272,7 @@ def format_redeem_results(results: list[dict]) -> str:
         SEP,
     ]
     for i, r in enumerate(results, 1):
-        title = (r.get("title") or r.get("condition_id", "Unknown"))[:55]
+        title = _e((r.get("title") or r.get("condition_id", "Unknown"))[:55])
         size  = r.get("size", 0)
         won   = r.get("won", True)   # default True for backwards-compat
         outcome_label = "WON" if won else "LOST"
@@ -277,9 +283,9 @@ def format_redeem_results(results: list[dict]) -> str:
             gas = r.get("gas_used")
             gas_str = f"  gas={gas:,}" if gas else ""
             lines.append(f"\u2705 {i}. [{outcome_label}] {title}")
-            lines.append(f"   {size:.4f} shares  recovered: {recovered}  tx: <code>{short_tx}</code>{gas_str}")
+            lines.append(f"   {size:.4f} shares  recovered: {recovered}  tx: <code>{_e(short_tx)}</code>{gas_str}")
         else:
-            err = (r.get("error") or "unknown error")[:200]
+            err = _e((r.get("error") or "unknown error")[:200])
             lines.append(f"\u274c {i}. [{outcome_label}] {title}")
             lines.append(f"   Error: {err}")
     lines.append(SEP)
@@ -295,19 +301,19 @@ def format_auto_redeem_notification(results: list[dict]) -> str:
         SEP,
     ]
     for r in success:
-        title     = (r.get("title") or r.get("condition_id", "?"))[:55]
+        title     = _e((r.get("title") or r.get("condition_id", "?"))[:55])
         won       = r.get("won", True)
         outcome_label = "WON" if won else "LOST"
         recovered     = f"${r.get('size', 0):.2f}" if won else "$0.00"
         tx        = r.get("tx_hash", "")
         short_tx  = tx[:10] + "..." + tx[-6:] if tx and len(tx) > 16 else (tx or "N/A")
         lines.append(f"\u2705 [{outcome_label}] {title}")
-        lines.append(f"   recovered: {recovered}  tx: <code>{short_tx}</code>")
+        lines.append(f"   recovered: {recovered}  tx: <code>{_e(short_tx)}</code>")
     for r in failed:
-        title = (r.get("title") or r.get("condition_id", "?"))[:55]
+        title = _e((r.get("title") or r.get("condition_id", "?"))[:55])
         won   = r.get("won", True)
         outcome_label = "WON" if won else "LOST"
-        err   = (r.get("error") or "unknown")[:200]
+        err   = _e((r.get("error") or "unknown")[:200])
         lines.append(f"\u274c [{outcome_label}] {title}")
         lines.append(f"   {err}")
     lines.append(SEP)
@@ -326,13 +332,13 @@ def format_error_alert(context: str, error: str, detail: str | None = None) -> s
         Optional full traceback or extended detail (truncated to 600 chars).
     """
     lines = [
-        f"\u26a0\ufe0f <b>Error \u2014 {context}</b>",
+        f"\u26a0\ufe0f <b>Error \u2014 {_e(context)}</b>",
         SEP,
-        f"<b>Error:</b> {error[:200]}",
+        f"<b>Error:</b> {_e(error[:200])}",
     ]
     if detail:
         short_detail = detail[-600:] if len(detail) > 600 else detail
-        lines.append(f"<pre>{short_detail}</pre>")
+        lines.append(f"<pre>{_e(short_detail)}</pre>")
     lines.append(SEP)
     return "\n".join(lines)
 
@@ -354,14 +360,14 @@ def format_redemption_history(stats: dict, recent: list[dict]) -> str:
     lines.append("\U0001f4cb <b>Recent Redemptions:</b>")
     for r in recent:
         ts = r.get("created_at", "")[:16]
-        title = (r.get("title") or r.get("condition_id", "Unknown"))[:45]
+        title = _e((r.get("title") or r.get("condition_id", "Unknown"))[:45])
         size = r.get("size", 0)
         status = r.get("status", "?")
         icon = "\u2705" if status == "success" else "\u274c"
         tx = r.get("tx_hash") or ""
         short_tx = tx[:8] + "..." if tx else "N/A"
         lines.append(f"{icon} {ts}  {title}")
-        lines.append(f"   {size:.4f} sh  tx: <code>{short_tx}</code>")
+        lines.append(f"   {size:.4f} sh  tx: <code>{_e(short_tx)}</code>")
 
     return "\n".join(lines)
 

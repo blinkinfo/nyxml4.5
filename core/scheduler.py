@@ -13,6 +13,7 @@ import config as cfg
 from core import strategy, trader, resolver
 from core import pending_queue
 from db import queries
+import html as _html
 from polymarket.markets import SLOT_DURATION, slot_info_from_ts
 
 log = logging.getLogger(__name__)
@@ -321,7 +322,7 @@ async def _auto_redeem_job() -> None:
             title = (r.get("title") or r.get("condition_id", "?"))[:55]
             await _send_telegram(
                 f"&#x26A0;&#xFE0F; <b>Redemption Failed</b>\n"
-                f"{title}\n<pre>{detail}</pre>"
+                f"{_html.escape(title)}\n<pre>{_html.escape(detail)}</pre>"
             )
 
     msg = format_auto_redeem_notification(new_results)
