@@ -99,9 +99,10 @@ def sweep_threshold(
     if candidates_above:
         # Pick maximum daily edge = (WR - 0.5) * trades_per_day among WR >= 0.59 candidates.
         # This balances win-rate quality against trade frequency rather than
-        # blindly maximising volume — a threshold at 62% WR / 2 tpd beats
-        # 59.5% WR / 5 tpd because (0.62-0.5)*2=0.24 > (0.595-0.5)*5=0.475... wait,
-        # let the math decide: we simply pick argmax of the edge metric.
+        # blindly picking the highest WR or the most trades.
+        # Example: 59.5% WR / 5 tpd → edge = (0.595-0.5)*5 = 0.475, which beats
+        # 65% WR / 2 tpd → edge = (0.65-0.5)*2 = 0.30, even though 65% WR > 59.5%.
+        # The metric correctly favours the more active threshold here.
         best = max(candidates_above, key=lambda x: (x[1] - 0.5) * x[3])
         best_threshold, best_wr, best_trades, best_trades_per_day = best
         log.info(

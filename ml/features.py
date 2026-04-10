@@ -458,11 +458,16 @@ def build_live_features(
         atr5_arr = atr5.values  # full series up to and including current candle
         atr_n1 = atr5_arr[-2] if len(atr5_arr) >= 2 else np.nan  # N-1 value
         if pd.notna(atr_n1):
-            # Use up to _ATR_WINDOW prior values (excluding N-1 itself for percentile rank)
-            window_vals = atr5_arr[max(0, len(atr5_arr)-_ATR_WINDOW-1):-2]  # values before N-1
+            # Window matches training: rolling(288) at the current row includes atr_n1
+            # as the last element — atr5_arr[L-289 .. L-2] in 0-based terms.
+            # Slice atr5_arr[max(0, len-289):-1] gives exactly those 288 values
+            # (or fewer near the start), with atr_n1 = atr5_arr[-2] as the last entry.
+            window_vals = atr5_arr[max(0, len(atr5_arr)-_ATR_WINDOW-1):-1]
             window_vals = window_vals[~np.isnan(window_vals)]  # strip ATR warmup NaNs
             if len(window_vals) >= 14:
-                atr_percentile_24h = float(np.sum(window_vals < atr_n1)) / max(len(window_vals), 1)
+                # Rank atr_n1 (last element) against all prior values in the window,
+                # matching the training _rolling_percentile logic: x[-1] vs x[:-1].
+                atr_percentile_24h = float(np.sum(window_vals[:-1] < atr_n1)) / max(len(window_vals) - 1, 1)
             else:
                 atr_percentile_24h = np.nan
             if len(window_vals) >= 2:

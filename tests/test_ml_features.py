@@ -20,7 +20,7 @@ def make_ohlcv(n=100, seed=42):
 
 
 def test_feature_count():
-    assert len(FEATURE_COLS) == 22
+    assert len(FEATURE_COLS) == 26
 
 
 def test_feature_order():
@@ -30,7 +30,8 @@ def test_feature_order():
                 'body_ratio_15m', 'dir_15m', 'volume_ratio_15m',
                 'body_ratio_1h', 'dir_1h', 'ema9_slope_1h',
                 'funding_rate', 'funding_zscore',
-                'delta_ratio', 'cvd_delta', 'cvd_5', 'cvd_20', 'cvd_trend']
+                'delta_ratio', 'cvd_delta', 'cvd_5', 'cvd_20', 'cvd_trend',
+                'hour_utc', 'dow', 'atr_percentile_24h', 'vol_regime']
     assert FEATURE_COLS == expected
 
 

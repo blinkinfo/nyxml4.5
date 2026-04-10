@@ -9,7 +9,24 @@ import shutil
 
 import lightgbm as lgb
 
+from ml.features import FEATURE_COLS
+
 log = logging.getLogger(__name__)
+
+_EXPECTED_NUM_FEATURES = len(FEATURE_COLS)
+
+
+def _validate_feature_count(model: lgb.Booster, slot: str, source: str) -> lgb.Booster | None:
+    """Return the model if its feature count matches FEATURE_COLS, else None."""
+    n = model.num_feature()
+    if n != _EXPECTED_NUM_FEATURES:
+        log.warning(
+            "%s: model slot=%s has %d features but current FEATURE_COLS expects %d "
+            "— discarding stale model (signals will be skipped until retrain)",
+            source, slot, n, _EXPECTED_NUM_FEATURES,
+        )
+        return None
+    return model
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
 
@@ -48,7 +65,7 @@ def load_model(slot: str = "current") -> lgb.Booster | None:
     try:
         model = lgb.Booster(model_file=path)
         log.info("load_model: loaded slot=%s", slot)
-        return model
+        return _validate_feature_count(model, slot, "load_model")
     except Exception as e:
         log.error("load_model: failed to load %s: %s", path, e)
         return None
@@ -170,6 +187,32 @@ async def save_model_to_db(model: lgb.Booster, slot: str, metadata: dict) -> Non
     log.info("save_model_to_db: saved slot=%s (%d bytes)", slot, len(blob))
 
 
+def patch_metadata(slot: str, updates: dict) -> None:
+    """Merge *updates* into the on-disk metadata JSON for *slot*.
+
+    Useful for back-filling fields (e.g. ``down_override``) into an already-
+    saved metadata file without re-saving the entire model.  No-op if the
+    metadata file does not exist yet.
+    """
+    path = _meta_path(slot)
+    if not os.path.exists(path):
+        log.debug("patch_metadata: no metadata file for slot=%s, skipping", slot)
+        return
+    try:
+        with open(path) as f:
+            meta = json.load(f)
+    except Exception as e:
+        log.error("patch_metadata: failed to read %s: %s", path, e)
+        return
+    meta.update(updates)
+    try:
+        with open(path, "w") as f:
+            json.dump(meta, f, indent=2)
+        log.info("patch_metadata: patched slot=%s keys=%s", slot, list(updates.keys()))
+    except Exception as e:
+        log.error("patch_metadata: failed to write %s: %s", path, e)
+
+
 async def load_model_from_db(slot: str = "current") -> "lgb.Booster | None":
     """Load model blob from SQLite and write to temp disk path for LightGBM to load."""
     import tempfile, os
@@ -190,7 +233,7 @@ async def load_model_from_db(slot: str = "current") -> "lgb.Booster | None":
     try:
         model = lgb.Booster(model_file=tmp_path)
         log.info("load_model_from_db: loaded slot=%s (%d bytes)", slot, len(blob))
-        return model
+        return _validate_feature_count(model, slot, "load_model_from_db")
     except Exception as e:
         log.error("load_model_from_db: failed to load slot=%s: %s", slot, e)
         return None

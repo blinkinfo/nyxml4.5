@@ -46,6 +46,7 @@ from bot.formatters import (
 )
 from bot.keyboards import (
     back_to_menu,
+    down_override_keyboard,
     download_keyboard,
     main_menu,
     ml_menu,
@@ -632,6 +633,21 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 parse_mode="HTML",
                 reply_markup=ml_menu(),
             )
+            # If the DOWN side did not pass its own gate, ask the user whether to
+            # enable it anyway via the override keyboard.
+            if not meta.get("down_enabled", True):
+                down_val_wr = meta.get("down_val_wr", 0.0)
+                down_test_wr = meta.get("down_test_wr", 0.0)
+                down_thr = meta.get("down_threshold", "n/a")
+                await query.message.reply_text(
+                    f"\u2139\ufe0f <b>DOWN signal did not pass the 59\u202f% gate</b>\n\n"
+                    f"Val win-rate: <b>{down_val_wr:.1%}</b>  |  "
+                    f"Test win-rate: <b>{down_test_wr:.1%}</b>  |  "
+                    f"Threshold: <b>{down_thr}</b>\n\n"
+                    "Do you want to enable the DOWN signal anyway, or keep it disabled?",
+                    parse_mode="HTML",
+                    reply_markup=down_override_keyboard(),
+                )
 
     elif data == "ml_discard_candidate":
         await query.answer()
@@ -644,6 +660,53 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "\U0001f5d1 <b>Candidate discarded.</b>\n\n"
             "The blocked candidate has been removed. "
             "The current production model is unchanged.",
+            reply_markup=ml_menu(),
+        )
+
+    elif data == "ml_down_override_anyway":
+        await query.answer("DOWN signal enabled.", cache_time=10)
+        from ml import model_store
+        # Patch the on-disk metadata so ml_strategy picks up down_override=True
+        model_store.patch_metadata("current", {"down_override": True})
+        # Also patch DB metadata so the flag survives container restarts
+        try:
+            import aiosqlite
+            import config as cfg
+            import json as _json
+            async with aiosqlite.connect(cfg.DB_PATH) as _db:
+                _cur = await _db.execute(
+                    "SELECT metadata FROM model_blobs WHERE slot = ?", ("current",)
+                )
+                _row = await _cur.fetchone()
+                if _row:
+                    _meta = _json.loads(_row[0])
+                    _meta["down_override"] = True
+                    await _db.execute(
+                        "UPDATE model_blobs SET metadata = ?, updated_at = CURRENT_TIMESTAMP "
+                        "WHERE slot = ?",
+                        (_json.dumps(_meta), "current"),
+                    )
+                    await _db.commit()
+        except Exception:
+            log.exception("ml_down_override_anyway: failed to patch DB metadata (non-fatal)")
+        await query.message.reply_text(
+            "\u2705 <b>DOWN signal override enabled.</b>\n\n"
+            "The DOWN model will fire on the next signal check even though it did not "
+            "pass the 59\u202f% gate. Monitor performance closely.",
+            parse_mode="HTML",
+            reply_markup=ml_menu(),
+        )
+
+    elif data == "ml_down_override_skip":
+        await query.answer("DOWN signal kept disabled.")
+        from ml import model_store
+        # Explicitly mark down_override=False so intent is clear in metadata
+        model_store.patch_metadata("current", {"down_override": False})
+        await query.message.reply_text(
+            "\u274c <b>DOWN signal remains disabled.</b>\n\n"
+            "The UP model is live. The DOWN side will not fire until a retrain "
+            "produces a candidate that passes its own 59\u202f% gate.",
+            parse_mode="HTML",
             reply_markup=ml_menu(),
         )
 
@@ -1193,6 +1256,40 @@ async def _retrain_background(application, chat_id) -> None:
             )
             text = format_retrain_complete(meta, threshold)
             await notify(text)
+            # Auto-promote: UP passed the gate — promote candidate to current now.
+            try:
+                from ml import model_store as _ms
+                from core.strategies.ml_strategy import (
+                    request_model_reload as _req_reload,
+                    set_model as _set_model,
+                )
+                _ms.promote_candidate()
+                try:
+                    await _ms.promote_candidate_in_db()
+                except Exception:
+                    log.exception("_retrain_background: failed to persist auto-promotion to DB (disk promote succeeded)")
+                try:
+                    _promoted = await _ms.load_model_from_db("current")
+                    if _promoted:
+                        _set_model(_promoted)
+                except Exception:
+                    log.exception("_retrain_background: failed to preload auto-promoted model into strategy (non-fatal)")
+                _req_reload()
+                log.info("_retrain_background: candidate auto-promoted to current")
+            except Exception:
+                log.exception("_retrain_background: auto-promotion failed (non-fatal)")
+            # If DOWN side did not pass its own gate, ask user whether to override.
+            if not down_enabled:
+                from bot.keyboards import down_override_keyboard as _down_kb
+                await notify(
+                    f"\u2139\ufe0f <b>DOWN signal did not pass the 59\u202f% gate</b>\n\n"
+                    f"Val win-rate: <b>{down_val_wr:.1%}</b>  |  "
+                    f"Test win-rate: <b>{down_test_wr:.1%}</b>  |  "
+                    f"Threshold: <b>{down_threshold}</b>\n\n"
+                    "The UP model has been auto-promoted. "
+                    "Do you want to enable the DOWN signal anyway, or keep it disabled?",
+                    reply_markup=_down_kb(),
+                )
 
     except _asyncio.TimeoutError:
         log.error("Retrain background task timed out after 25 min")

@@ -153,6 +153,8 @@ class MLStrategy(BaseStrategy):
         try:
             meta = model_store.load_metadata(self._model_slot)
             if meta is not None:
+                if meta.get("down_override", False):
+                    return True
                 return bool(meta.get("down_enabled", False))
         except Exception:
             pass
@@ -198,7 +200,7 @@ class MLStrategy(BaseStrategy):
 
         try:
             # Fetch live data in parallel using executor (blocking ccxt calls)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             df5, df15, df1h, funding_rate, cvd_live = await asyncio.gather(
                 loop.run_in_executor(None, lambda: data_fetcher.fetch_live_5m(50)),
                 loop.run_in_executor(None, lambda: data_fetcher.fetch_live_15m(30)),

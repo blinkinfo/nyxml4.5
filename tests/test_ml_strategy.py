@@ -10,7 +10,7 @@ REQUIRED_TRADE_KEYS = REQUIRED_SKIP_KEYS | {'side', 'entry_price', 'opposite_pri
 
 
 def test_feature_count():
-    assert len(FEATURE_COLS) == 22
+    assert len(FEATURE_COLS) == 26
 
 
 def test_feature_cols_are_strings():

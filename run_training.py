@@ -12,7 +12,7 @@ print(f'5m: {len(data["df5"])}, 15m: {len(data["df15"])}, 1h: {len(data["df1h"])
 print('Building features...')
 df_feat = feat_eng.build_features(data['df5'], data['df15'], data['df1h'], data['funding'], data['cvd'])
 print(f'Feature matrix: {df_feat.shape}')
-assert list(df_feat.columns[:22]) == feat_eng.FEATURE_COLS, f'Feature order mismatch: {list(df_feat.columns[:22])}'
+assert list(df_feat.columns[:len(feat_eng.FEATURE_COLS)]) == feat_eng.FEATURE_COLS, f'Feature order mismatch: {list(df_feat.columns[:len(feat_eng.FEATURE_COLS)])}'
 print('Feature order OK')
 
 print('Training model...')

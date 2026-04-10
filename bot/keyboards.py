@@ -218,6 +218,22 @@ def pattern_keyboard() -> InlineKeyboardMarkup:
 # ML Model submenu
 # ---------------------------------------------------------------------------
 
+def down_override_keyboard() -> InlineKeyboardMarkup:
+    """Shown after an auto-promote (or force-promote) when the DOWN side failed
+    its own 59 % gate.
+
+    The UP model has already been promoted to current.  The user now chooses
+    whether to enable the DOWN signal anyway or to leave it disabled.
+    """
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("\u26a0\ufe0f Enable DOWN Anyway", callback_data="ml_down_override_anyway"),
+            InlineKeyboardButton("\u274c Keep DOWN Disabled", callback_data="ml_down_override_skip"),
+        ],
+        [InlineKeyboardButton("\U0001f519 Back to Menu", callback_data="cmd_menu")],
+    ])
+
+
 def retrain_blocked_keyboard() -> InlineKeyboardMarkup:
     """Shown after a retrain that failed the 59% deployment gate.
 
