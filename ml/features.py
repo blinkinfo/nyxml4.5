@@ -2,6 +2,9 @@
 
 ZERO lookahead bias: all features use shift(k>=1). Target uses shift(-1) (future,
 only for training labels — never used as a feature).
+
+26 features total: candle shape (7), volume (2), 15m context (3), 1h context (3),
+funding (2), CVD (5), time-of-day (2), volatility regime (2).
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Feature column order — MUST match exactly (22 features)
+# Feature column order — MUST match exactly (26 features)
 # ---------------------------------------------------------------------------
 FEATURE_COLS = [
     "body_ratio_n1", "body_ratio_n2", "body_ratio_n3",
@@ -26,6 +29,7 @@ FEATURE_COLS = [
     "body_ratio_1h", "dir_1h", "ema9_slope_1h",
     "funding_rate", "funding_zscore",
     "delta_ratio", "cvd_delta", "cvd_5", "cvd_20", "cvd_trend",
+    "hour_utc", "dow", "atr_percentile_24h", "vol_regime",
 ]
 
 
@@ -107,7 +111,7 @@ def build_features(
     funding: pd.DataFrame,
     cvd: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Build 22 features per BLUEPRINT sections 4-6. Returns df with FEATURE_COLS + 'target'."""
+    """Build 26 features per BLUEPRINT sections 4-6. Returns df with FEATURE_COLS + 'target'."""
 
     # Work on copies with clean RangeIndex
     df5 = df5.copy().reset_index(drop=True)
@@ -230,6 +234,30 @@ def build_features(
     df5["cvd_trend"] = rcvd["cvd_trend_raw"].shift(1).values
 
     # -----------------------------------------------------------------------
+    # Time-of-day features — derived from N-1 candle timestamp (ts_n1 = df5["timestamp"].shift(1))
+    # hour_utc: 0-23 UTC hour of the N-1 candle open
+    # dow: 0=Monday .. 6=Sunday day-of-week of the N-1 candle
+    ts_n1_series = df5["timestamp"].shift(1)
+    df5["hour_utc"] = ts_n1_series.dt.hour.astype(float)
+    df5["dow"] = ts_n1_series.dt.dayofweek.astype(float)
+
+    # Volatility regime features — derived from ATR of the N-1 candle
+    # atr_percentile_24h: percentile rank (0.0–1.0) of atr5[i-1] within a 288-candle rolling window
+    # vol_regime: zscore of atr5[i-1] within same 288-candle rolling window (std-normalized)
+    # 288 = 24 hours * 12 five-minute candles per hour
+    _ATR_WINDOW = 288
+    atr_shifted = atr5.shift(1)
+    def _rolling_percentile(s: pd.Series, w: int) -> pd.Series:
+        return s.rolling(w, min_periods=14).apply(
+            lambda x: float(np.sum(x[:-1] < x[-1])) / max(len(x) - 1, 1), raw=True
+        )
+    df5["atr_percentile_24h"] = _rolling_percentile(atr_shifted, _ATR_WINDOW)
+    roll = atr_shifted.rolling(_ATR_WINDOW, min_periods=14)
+    atr_roll_mean = roll.mean()
+    atr_roll_std  = roll.std()
+    df5["vol_regime"] = (atr_shifted - atr_roll_mean) / atr_roll_std.clip(lower=1e-10)
+
+    # -----------------------------------------------------------------------
     # Target: 1 if close[i+1] > close[i] (future label, NOT a feature)
     # -----------------------------------------------------------------------
     df5["target"] = (df5["close"].shift(-1) > df5["close"]).astype(int)
@@ -256,7 +284,7 @@ def build_live_features(
     cvd_live: pd.DataFrame,
 ) -> "np.ndarray | None":
     """
-    Build a single feature row (shape 1×22) for live inference.
+    Build a single feature row (shape 1×26) for live inference.
     Returns None if ATR warmup not satisfied (fewer than 14 candles).
     """
     # Validate ATR warmup
@@ -405,6 +433,40 @@ def build_live_features(
     else:
         delta_ratio = cvd_delta = cvd_5 = cvd_20 = cvd_trend = np.nan
 
+    # Time-of-day features — use N-1 candle timestamp (index -2)
+    ts_n1_live = df5["timestamp"].iloc[-2] if len(df5) >= 2 else None
+    if ts_n1_live is not None and not pd.isna(ts_n1_live):
+        hour_utc = float(pd.Timestamp(ts_n1_live).hour)
+        dow = float(pd.Timestamp(ts_n1_live).dayofweek)
+    else:
+        hour_utc = np.nan
+        dow = np.nan
+
+    # Volatility regime features — rolling window on atr5 series
+    _ATR_WINDOW = 288
+    if len(atr5) >= 14:
+        atr5_arr = atr5.values  # full series up to and including current candle
+        atr_n1 = atr5_arr[-2] if len(atr5_arr) >= 2 else np.nan  # N-1 value
+        if pd.notna(atr_n1):
+            # Use up to _ATR_WINDOW prior values (excluding N-1 itself for percentile rank)
+            window_vals = atr5_arr[max(0, len(atr5_arr)-_ATR_WINDOW-1):-2]  # values before N-1
+            if len(window_vals) >= 1:
+                atr_percentile_24h = float(np.sum(window_vals < atr_n1)) / max(len(window_vals), 1)
+            else:
+                atr_percentile_24h = np.nan
+            if len(window_vals) >= 2:
+                w_mean = float(np.mean(window_vals))
+                w_std  = float(np.std(window_vals))
+                vol_regime = (atr_n1 - w_mean) / max(w_std, 1e-10)
+            else:
+                vol_regime = np.nan
+        else:
+            atr_percentile_24h = np.nan
+            vol_regime = np.nan
+    else:
+        atr_percentile_24h = np.nan
+        vol_regime = np.nan
+
     row = np.array([[
         body_ratio_n1, body_ratio_n2, body_ratio_n3,
         upper_wick_n1, upper_wick_n2,
@@ -414,6 +476,7 @@ def build_live_features(
         body_ratio_1h, dir_1h, ema9_slope_1h,
         fr, funding_zscore,
         delta_ratio, cvd_delta, cvd_5, cvd_20, cvd_trend,
+        hour_utc, dow, atr_percentile_24h, vol_regime,
     ]], dtype=np.float64)
 
     if np.isnan(row).any():

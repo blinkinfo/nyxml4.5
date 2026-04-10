@@ -67,7 +67,8 @@ def sweep_threshold(
     """Sweep thresholds on val set and select best.
 
     Selection criteria:
-      - If any threshold achieves WR >= 0.59: pick the one with most trades.
+      - If any threshold achieves WR >= 0.59: pick the one that maximizes
+        (WR - 0.5) * trades_per_day  (edge-weighted activity score).
       - Otherwise: pick threshold with maximum WR.
 
     Returns:
@@ -81,7 +82,7 @@ def sweep_threshold(
     best_trades = 0
     best_trades_per_day = 0.0
 
-    # First pass: find candidates with WR >= 0.59 and max trades
+    # First pass: find candidates with WR >= 0.59
     candidates_above = []
 
     thresh = lo
@@ -96,12 +97,13 @@ def sweep_threshold(
         thresh = round(thresh + step, 4)
 
     if candidates_above:
-        # Pick maximum trades among WR >= 0.59 candidates
-        best = max(candidates_above, key=lambda x: x[2])
+        # Pick the candidate that maximizes (WR - 0.5) * trades_per_day
+        best = max(candidates_above, key=lambda x: (x[1] - 0.5) * x[3])
         best_threshold, best_wr, best_trades, best_trades_per_day = best
         log.info(
-            "sweep_threshold: WR>=0.59 candidates=%d, best thresh=%.3f WR=%.4f trades/day=%.1f",
+            "sweep_threshold: WR>=0.59 candidates=%d, best thresh=%.3f WR=%.4f trades/day=%.1f edge_score=%.4f",
             len(candidates_above), best_threshold, best_wr, best_trades_per_day,
+            (best_wr - 0.5) * best_trades_per_day,
         )
     else:
         # No candidate >= 0.59: pick max WR
