@@ -38,6 +38,7 @@ from bot.formatters import (
     format_retrain_blocked,
     format_retrain_complete,
     format_retrain_started,
+    format_set_down_threshold,
     format_signal_stats,
     format_status,
     format_trade_stats,
@@ -895,7 +896,8 @@ def register(application) -> None:
     application.add_handler(CommandHandler("demo",        cmd_demo))
     application.add_handler(CommandHandler("patterns",    cmd_patterns))
     # ML model management commands
-    application.add_handler(CommandHandler("set_threshold",  cmd_set_threshold))
+    application.add_handler(CommandHandler("set_threshold",      cmd_set_threshold))
+    application.add_handler(CommandHandler("set_down_threshold", cmd_set_down_threshold))
     application.add_handler(CommandHandler("model_status",   cmd_model_status))
     application.add_handler(CommandHandler("model_compare",  cmd_model_compare))
     application.add_handler(CommandHandler("promote_model",  cmd_promote_model))
@@ -947,6 +949,34 @@ async def cmd_set_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await queries.set_ml_threshold(threshold)
     await update.message.reply_text(
         f"ML threshold set to <b>{threshold:.3f}</b>. Active on next signal check.",
+        parse_mode="HTML",
+    )
+
+
+@auth_check
+async def cmd_set_down_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Set ML DOWN inference threshold. Usage: /set_down_threshold 0.48"""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /set_down_threshold &lt;value&gt;\nExample: /set_down_threshold 0.48\nValid range: 0.50 – 0.95",
+            parse_mode="HTML",
+        )
+        return
+    try:
+        threshold = float(context.args[0])
+    except (ValueError, IndexError):
+        await update.message.reply_text(
+            "Invalid value. Example: /set_down_threshold 0.48", parse_mode="HTML"
+        )
+        return
+    if not (0.50 <= threshold <= 0.95):
+        await update.message.reply_text(
+            "Threshold must be between 0.50 and 0.95.", parse_mode="HTML"
+        )
+        return
+    await queries.set_ml_down_threshold(threshold)
+    await update.message.reply_text(
+        format_set_down_threshold(threshold),
         parse_mode="HTML",
     )
 

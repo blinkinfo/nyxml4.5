@@ -785,3 +785,12 @@ def format_retrain_complete(meta: dict, threshold: float) -> str:
         "Use /promote_model to deploy.",
     ]
     return "\n".join(lines)
+
+
+def format_set_down_threshold(threshold: float) -> str:
+    """Confirmation message after /set_down_threshold."""
+    return (
+        f"\u2705 <b>DOWN threshold set to {threshold:.3f}</b>.\n"
+        "Active on next signal check.\n\n"
+        f"Signals will only SHORT when p_down \u2265 <b>{threshold:.3f}</b>."
+    )
