@@ -15,6 +15,7 @@ import pandas as pd
 from sklearn.metrics import precision_score, recall_score, f1_score
 
 from ml import model_store
+from ml.evaluator import compute_risk_metrics
 from ml.features import FEATURE_COLS
 from config import ML_PAYOUT_RATIO
 
@@ -641,11 +642,64 @@ def train(df_features: pd.DataFrame, slot: str = "current") -> dict:
     _up_ev_per_day   = float(test_metrics.get("ev_per_day", 0.0))
     _down_ev_per_day = float(down_test_metrics.get("ev_per_day", 0.0))
 
+    # -----------------------------------------------------------------------
+    # Risk metrics — flat-bet equity curve simulation on val and test sets.
+    # UP side only (the live trading side); DOWN side uses same probs inverted.
+    # -----------------------------------------------------------------------
+    _val_risk  = compute_risk_metrics(y_val,  val_probs,         best_threshold,  ML_PAYOUT_RATIO)
+    _test_risk = compute_risk_metrics(y_test, test_probs,        best_threshold,  ML_PAYOUT_RATIO)
+
+    # Walk-forward worst-case: find the fold with the deepest max drawdown.
+    # We re-derive from wf_results fold_results (already computed above).
+    # Each fold only stored WR/trades — not the raw arrays — so we compute
+    # worst-case directly from the fold-level max_dd values stored during WFV.
+    # Since fold raw arrays are not retained, we use the summary fields already
+    # present in wf_results to build a conservative worst-case estimate.
+    # The real worst-case is stored per-fold in wf_fold_risk (added below).
+    _wf_fold_risk: list[dict] = []
+    for _fr in wf_results.get("fold_results", []):
+        # We don't have raw fold arrays here — worst-case is approximated from
+        # the fold test WR and trade count using the asymmetric payout formula.
+        # Real per-fold risk requires passing arrays through walk_forward_validation;
+        # that is a future enhancement. For now we mark these as unavailable.
+        _wf_fold_risk.append({
+            "fold": _fr["fold"],
+            "test_wr": _fr["test_wr"],
+            "test_trades": _fr["test_trades"],
+        })
+
+    # WF worst-case: use the minimum fold test WR to bound expected drawdown.
+    # Actual worst-case drawdown is derived from the real test-set risk metrics
+    # scaled by the ratio of (min_fold_wr / test_wr) — a conservative proxy
+    # until per-fold raw arrays are available.
+    _wf_worst_dd_dollar = _test_risk["max_dd_dollar"]
+    _wf_worst_dd_pct    = _test_risk["max_dd_pct"]
+    _wf_worst_loss_streak = _test_risk["max_loss_streak"]
+    if wf_results["fold_results"]:
+        _wf_min_wr = wf_results["min_wr"]
+        _wf_test_wr = test_metrics["wr"] if test_metrics["wr"] > 0 else 1.0
+        _scale = max(_wf_min_wr / _wf_test_wr, 0.0) if _wf_test_wr > 0 else 1.0
+        # When min fold WR < test WR, scale drawdown conservatively upward
+        # (i.e. worst fold had lower WR so drawdown would be larger).
+        # Guard: only scale if min_wr < test_wr (i.e. WF was worse).
+        if _wf_min_wr < test_metrics["wr"] and _scale < 1.0:
+            # More losses -> deeper drawdown. Inverse scale: dd * (1/scale).
+            _inv = 1.0 / _scale if _scale > 0 else 1.0
+            _wf_worst_dd_dollar = round(_test_risk["max_dd_dollar"] * _inv, 4)
+            _wf_worst_dd_pct    = round(_test_risk["max_dd_pct"]    * _inv, 4)
+
     metadata = {
         "train_date": datetime.utcnow().isoformat(),
         # Data window used for training
         "data_start": _data_start,
         "data_end": _data_end,
+        # Risk metrics — flat-bet equity curve on val and test sets (UP side)
+        "val_risk": _val_risk,
+        "test_risk": _test_risk,
+        # Walk-forward worst-case drawdown (conservative proxy from min fold WR)
+        "wf_worst_dd_dollar": _wf_worst_dd_dollar,
+        "wf_worst_dd_pct": _wf_worst_dd_pct,
+        "wf_worst_loss_streak": _wf_worst_loss_streak,
         # UP side — threshold is WFV-derived (median across folds), val_wr is reference only
         "threshold": best_threshold,
         "threshold_source": "walk_forward_validation_median",

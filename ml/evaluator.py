@@ -108,6 +108,128 @@ def evaluate(
     return result
 
 
+def compute_risk_metrics(
+    y_true: np.ndarray,
+    probs: np.ndarray,
+    threshold: float,
+    payout: float,
+) -> dict:
+    """Compute risk/drawdown metrics for a model at a given threshold.
+
+    Simulates a $1 flat-bet equity curve on the ordered sequence of trades
+    selected by the model (probs >= threshold), preserving time order.
+
+    On a $1 flat-bet:
+        WIN  -> +payout   (e.g. +$0.85)
+        LOSS -> -1.00
+
+    Metrics returned
+    ----------------
+    max_dd_dollar   : float  — worst peak-to-trough drawdown in dollars
+    max_dd_pct      : float  — worst drawdown as % of peak equity
+    max_loss_streak : int    — longest consecutive losing trades
+    max_win_streak  : int    — longest consecutive winning trades
+    profit_factor   : float  — gross wins / gross losses (inf if no losses)
+    sharpe          : float  — annualised Sharpe ratio (252 trading days,
+                               assuming trades_per_day from this sample)
+    trades          : int    — number of trades at this threshold
+
+    All values are 0.0 / 0 when there are no trades at the threshold.
+    """
+    mask = probs >= threshold
+    trades = int(mask.sum())
+
+    _zero: dict = {
+        "max_dd_dollar": 0.0,
+        "max_dd_pct": 0.0,
+        "max_loss_streak": 0,
+        "max_win_streak": 0,
+        "profit_factor": 0.0,
+        "sharpe": 0.0,
+        "trades": 0,
+    }
+    if trades == 0:
+        return _zero
+
+    # Ordered W/L outcomes — time order preserved (no shuffling)
+    outcomes = y_true[mask].astype(int)  # 1 = win, 0 = loss
+
+    # Per-trade P&L: win -> +payout, loss -> -1.0
+    pnl = np.where(outcomes == 1, payout, -1.0)
+
+    # -----------------------------------------------------------------------
+    # Max drawdown — peak-to-trough on cumulative equity curve
+    # Starting equity = 0 (relative, $1 flat-bet each trade)
+    # -----------------------------------------------------------------------
+    equity = np.concatenate([[0.0], np.cumsum(pnl)])   # shape (trades+1,)
+    peak = np.maximum.accumulate(equity)
+    drawdown = equity - peak                            # always <= 0
+    max_dd_dollar = float(np.min(drawdown))            # most negative value
+
+    # Percentage drawdown: drawdown / peak — guard against peak == 0
+    # Use absolute peak so we handle cases where equity never goes positive.
+    # When peak == 0 at a trough, define pct drawdown as 0 (no capital at risk).
+    with np.errstate(invalid="ignore", divide="ignore"):
+        dd_pct = np.where(peak > 0, drawdown / peak * 100.0, 0.0)
+    max_dd_pct = float(np.min(dd_pct))                 # most negative %
+
+    # -----------------------------------------------------------------------
+    # Win / loss streaks
+    # -----------------------------------------------------------------------
+    max_win_streak = 0
+    max_loss_streak = 0
+    cur_win = 0
+    cur_loss = 0
+    for o in outcomes:
+        if o == 1:
+            cur_win += 1
+            cur_loss = 0
+            if cur_win > max_win_streak:
+                max_win_streak = cur_win
+        else:
+            cur_loss += 1
+            cur_win = 0
+            if cur_loss > max_loss_streak:
+                max_loss_streak = cur_loss
+
+    # -----------------------------------------------------------------------
+    # Profit factor — gross_wins / gross_losses
+    # -----------------------------------------------------------------------
+    gross_wins   = float(np.sum(pnl[pnl > 0]))
+    gross_losses = float(np.abs(np.sum(pnl[pnl < 0])))
+    if gross_losses == 0.0:
+        profit_factor = float("inf") if gross_wins > 0 else 0.0
+    else:
+        profit_factor = round(gross_wins / gross_losses, 4)
+
+    # -----------------------------------------------------------------------
+    # Sharpe ratio — annualised, assuming ~288 5-min slots/day on this sample
+    # We use per-trade returns (pnl) and scale to daily assuming trades_per_day.
+    # Formula: (mean_pnl / std_pnl) * sqrt(trades) is the per-sample Sharpe.
+    # We annualise by scaling to 252 trading days, so we need trades_per_day.
+    # Approximation: trades / (len(probs) * 5 / 1440) gives trades_per_day.
+    # -----------------------------------------------------------------------
+    sharpe = 0.0
+    if trades >= 2:
+        mean_r = float(np.mean(pnl))
+        std_r  = float(np.std(pnl, ddof=1))
+        if std_r > 0:
+            # trades_per_day from this sample window
+            tpd = trades / max(len(probs) * 5 / 1440, 1e-9)
+            # Annualise: multiply by sqrt(252 * trades_per_day)
+            sharpe = round((mean_r / std_r) * (252 * tpd) ** 0.5, 4)
+
+    return {
+        "max_dd_dollar": round(max_dd_dollar, 4),
+        "max_dd_pct": round(max_dd_pct, 4),
+        "max_loss_streak": int(max_loss_streak),
+        "max_win_streak": int(max_win_streak),
+        "profit_factor": profit_factor,
+        "sharpe": sharpe,
+        "trades": trades,
+    }
+
+
 def _print_table(m: dict) -> None:
     """Print a readable evaluation summary."""
     print("\n" + "=" * 52)

@@ -852,6 +852,37 @@ def format_retrain_blocked(meta: dict, threshold: float) -> str:
             "\u2502   Not validated\n"
         )
 
+    # Risk block — val vs test columns
+    val_risk  = meta.get("val_risk", {})
+    test_risk = meta.get("test_risk", {})
+    wf_dd_d   = meta.get("wf_worst_dd_dollar", 0.0)
+    wf_dd_pct = meta.get("wf_worst_dd_pct", 0.0)
+    wf_ls     = meta.get("wf_worst_loss_streak", 0)
+
+    def _dd_str(v: float) -> str:
+        return f"-${abs(v):.2f}" if v < 0 else "$0.00"
+
+    def _pct_str(v: float) -> str:
+        return f"{v:.1f}%" if v < 0 else "0.0%"
+
+    def _pf_str(v: float) -> str:
+        return "\u221e" if v == float("inf") else f"{v:.2f}"
+
+    if val_risk or test_risk:
+        risk_section = (
+            "\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
+            "\u2502 \u26a0\ufe0f <b>Risk</b>  (Val  \u2502  Test)\n"
+            f"\u2502  Max DD $      {_dd_str(val_risk.get('max_dd_dollar', 0.0))}  \u2502  {_dd_str(test_risk.get('max_dd_dollar', 0.0))}\n"
+            f"\u2502  Max DD %      {_pct_str(val_risk.get('max_dd_pct', 0.0))}  \u2502  {_pct_str(test_risk.get('max_dd_pct', 0.0))}\n"
+            f"\u2502  Loss streak   {val_risk.get('max_loss_streak', 0)}  \u2502  {test_risk.get('max_loss_streak', 0)}\n"
+            f"\u2502  Win streak    {val_risk.get('max_win_streak', 0)}  \u2502  {test_risk.get('max_win_streak', 0)}\n"
+            f"\u2502  Profit factor {_pf_str(val_risk.get('profit_factor', 0.0))}  \u2502  {_pf_str(test_risk.get('profit_factor', 0.0))}\n"
+            f"\u2502  Sharpe        {val_risk.get('sharpe', 0.0):.2f}  \u2502  {test_risk.get('sharpe', 0.0):.2f}\n"
+            f"\u2502  WF worst DD   {_dd_str(wf_dd_d)}  ({_pct_str(wf_dd_pct)})  \u2022  loss streak {wf_ls}\n"
+        )
+    else:
+        risk_section = ""
+
     return (
         "\u26a0\ufe0f <b>Retrain \u2014 Gate NOT Passed</b>\n"
         "\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
@@ -866,6 +897,7 @@ def format_retrain_blocked(meta: dict, threshold: float) -> str:
         f"\u2502   EV/day  {up_ev_str}\n"
         "\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
         f"{down_section}"
+        f"{risk_section}"
         "\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
         "Candidate saved \u2014 not live.\n"
         "/model to compare  \u2022  /promote_model to override gate"
@@ -919,6 +951,37 @@ def format_retrain_complete(meta: dict, threshold: float) -> str:
             "\u2502   Not validated\n"
         )
 
+    # Risk block — val vs test columns
+    val_risk  = meta.get("val_risk", {})
+    test_risk = meta.get("test_risk", {})
+    wf_dd_d   = meta.get("wf_worst_dd_dollar", 0.0)
+    wf_dd_pct = meta.get("wf_worst_dd_pct", 0.0)
+    wf_ls     = meta.get("wf_worst_loss_streak", 0)
+
+    def _dd_str(v: float) -> str:
+        return f"-${abs(v):.2f}" if v < 0 else "$0.00"
+
+    def _pct_str(v: float) -> str:
+        return f"{v:.1f}%" if v < 0 else "0.0%"
+
+    def _pf_str(v: float) -> str:
+        return "\u221e" if v == float("inf") else f"{v:.2f}"
+
+    if val_risk or test_risk:
+        risk_section = (
+            "\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
+            "\u2502 \u26a0\ufe0f <b>Risk</b>  (Val  \u2502  Test)\n"
+            f"\u2502  Max DD $      {_dd_str(val_risk.get('max_dd_dollar', 0.0))}  \u2502  {_dd_str(test_risk.get('max_dd_dollar', 0.0))}\n"
+            f"\u2502  Max DD %      {_pct_str(val_risk.get('max_dd_pct', 0.0))}  \u2502  {_pct_str(test_risk.get('max_dd_pct', 0.0))}\n"
+            f"\u2502  Loss streak   {val_risk.get('max_loss_streak', 0)}  \u2502  {test_risk.get('max_loss_streak', 0)}\n"
+            f"\u2502  Win streak    {val_risk.get('max_win_streak', 0)}  \u2502  {test_risk.get('max_win_streak', 0)}\n"
+            f"\u2502  Profit factor {_pf_str(val_risk.get('profit_factor', 0.0))}  \u2502  {_pf_str(test_risk.get('profit_factor', 0.0))}\n"
+            f"\u2502  Sharpe        {val_risk.get('sharpe', 0.0):.2f}  \u2502  {test_risk.get('sharpe', 0.0):.2f}\n"
+            f"\u2502  WF worst DD   {_dd_str(wf_dd_d)}  ({_pct_str(wf_dd_pct)})  \u2022  loss streak {wf_ls}\n"
+        )
+    else:
+        risk_section = ""
+
     return (
         "\u2705 <b>Retrain Complete</b>\n"
         "\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
@@ -933,6 +996,7 @@ def format_retrain_complete(meta: dict, threshold: float) -> str:
         f"\u2502   EV/day  {up_ev_str}\n"
         "\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
         f"{down_section}"
+        f"{risk_section}"
         "\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
         "Use /promote_model to deploy  \u2022  /model to compare"
     )
