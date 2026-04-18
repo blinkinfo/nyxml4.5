@@ -249,12 +249,42 @@ def test_live_features_match_training_for_latest_closed_5m_row():
     np.testing.assert_allclose(got, expected, rtol=0.0, atol=1e-12)
 
 
+def test_build_features_preserves_rows_when_funding_zscore_warmup_is_short():
+    from ml.features import build_features
+
+    rng = np.random.default_rng(123)
+    n5 = 500
+    ts_5m = pd.date_range("2026-01-01", periods=n5, freq="5min", tz="UTC")
+    close = 50000 + np.cumsum(rng.normal(0, 20, n5))
+    open_ = close + rng.normal(0, 5, n5)
+    high = np.maximum(open_, close) + rng.uniform(0, 8, n5)
+    low = np.minimum(open_, close) - rng.uniform(0, 8, n5)
+    vol = rng.uniform(50, 200, n5)
+    df5 = pd.DataFrame({"timestamp": ts_5m, "open": open_, "high": high, "low": low, "close": close, "volume": vol})
+
+    s = df5.set_index("timestamp")
+    df15 = s.resample("15min").agg({"open":"first","high":"max","low":"min","close":"last","volume":"sum"}).dropna().reset_index()
+    df1h = s.resample("1h").agg({"open":"first","high":"max","low":"min","close":"last","volume":"sum"}).dropna().reset_index()
+
+    funding_ts = pd.date_range(ts_5m.min() - pd.Timedelta("8h"), periods=8, freq="8h", tz="UTC")
+    funding = pd.DataFrame({
+        "timestamp": funding_ts,
+        "funding_rate": np.linspace(-0.0002, 0.0002, len(funding_ts)),
+    })
+
+    feat = build_features(df5, df15, df1h, funding)
+    assert not feat.empty, "build_features should retain rows even with short funding history"
+    assert feat["timestamp"].min() < ts_5m.max() - pd.Timedelta(days=1), "retained training window collapsed too far toward the end"
+    assert feat["funding_zscore"].notna().all(), "funding_zscore should use a neutral fallback instead of leaving NaN"
+    assert (feat["funding_rate"].notna()).all(), "funding_rate should still be present after asof merge for retained rows"
+
+
 def test_fetch_funding_mock():
     """Verify fetch_funding() behaviour using mocked ccxt and MEXC REST API.
 
     Scenarios tested:
-      (a) ccxt pagination stalls (two consecutive pages same last_ts) -> stops ccxt loop
-      (b) ccxt coverage < 80% of window -> falls back to MEXC REST API
+      (a) ccxt pagination stalls with no forward progress -> stops ccxt loop
+      (b) ccxt coverage is sparse -> falls back to MEXC REST API
       (c) REST results are deduplicated (duplicate settleTime entries collapsed)
       (d) Records outside [start_ms, end_ms) are filtered out
     """
@@ -265,56 +295,39 @@ def test_fetch_funding_mock():
     import ml.data_fetcher as df_module
     from ml.data_fetcher import fetch_funding
 
-    # Define a 10-day window (start to end) — funding every 8h = 30 records expected
-    # Use a window far enough back that coverage from ccxt (which returns only 3 recent
-    # records) will be < 80%, forcing the REST fallback.
-    now_ms = 1_700_000_000_000  # fixed epoch for determinism (~Nov 2023)
-    start_ms = now_ms - 10 * 24 * 3600 * 1000   # 10 days before
+    now_ms = 1_700_000_000_000
+    start_ms = now_ms - 10 * 24 * 3600 * 1000
     end_ms   = now_ms
 
-    # --- Build ccxt mock ---
-    # ccxt returns only 3 records, all with the same timestamp (stall on page 2)
-    # Page 1: 3 records near the end of the window (recent) — stall because page 2 same last_ts
-    ccxt_ts_1 = end_ms - 3 * 8 * 3600 * 1000  # 24h before end
+    ccxt_ts_1 = end_ms - 3 * 8 * 3600 * 1000
     ccxt_ts_2 = end_ms - 2 * 8 * 3600 * 1000
     ccxt_ts_3 = end_ms - 1 * 8 * 3600 * 1000
     ccxt_page1 = [
-        {"timestamp": ccxt_ts_1, "fundingRate": 0.0001},
-        {"timestamp": ccxt_ts_2, "fundingRate": 0.0002},
         {"timestamp": ccxt_ts_3, "fundingRate": 0.0003},
+        {"timestamp": ccxt_ts_2, "fundingRate": 0.0002},
+        {"timestamp": ccxt_ts_1, "fundingRate": 0.0001},
     ]
-    # Page 2: same last_ts as page 1 last record -> stall detected -> stop
     ccxt_page2 = [
-        {"timestamp": ccxt_ts_3, "fundingRate": 0.0003},  # same last_ts as page1[-1]
+        {"timestamp": ccxt_ts_3, "fundingRate": 0.0003},
     ]
 
     mock_exchange = MagicMock()
     mock_exchange.fetch_funding_rate_history.side_effect = [ccxt_page1, ccxt_page2]
 
-    # --- Build REST mock ---
-    # REST returns 2 pages of records covering the full 10-day window.
-    # Page 1: newest records (descending order as MEXC returns them)
-    # Page 2: older records reaching before start_ms -> pagination stops
-    # Include one duplicate settleTime across pages to test dedup.
-    # Include one record outside [start_ms, end_ms) to test filtering.
-    interval_ms = 8 * 3600 * 1000  # 8 hours in ms
+    interval_ms = 8 * 3600 * 1000
 
     def make_rest_items(ts_list):
         return [{"settleTime": str(ts), "fundingRate": str(round(0.0001 * (i + 1), 6))}
                 for i, ts in enumerate(ts_list)]
 
-    # Page 1: 5 records near end of window
     rest_page1_ts = [end_ms - i * interval_ms for i in range(1, 6)]
     rest_page1_items = make_rest_items(rest_page1_ts)
 
-    # Page 2: 5 records going back to before start_ms (last one is out-of-range)
-    # Also duplicate the last ts from page 1 to test dedup
     rest_page2_ts = [end_ms - i * interval_ms for i in range(5, 11)]
-    rest_page2_ts.append(start_ms - interval_ms)  # one record before start_ms (filtered out)
-    rest_page2_ts.append(rest_page1_ts[-1])        # duplicate from page 1 (deduped)
+    rest_page2_ts.append(start_ms - interval_ms)
+    rest_page2_ts.append(rest_page1_ts[-1])
     rest_page2_items = make_rest_items(rest_page2_ts)
 
-    # Page 3: empty -> stop
     rest_page3_items: list = []
 
     def mock_httpx_get(url, params=None, **kwargs):
@@ -332,7 +345,7 @@ def test_fetch_funding_mock():
 
     with patch.object(df_module.ccxt, "mexc", return_value=mock_exchange), \
          patch("ml.data_fetcher.httpx.Client") as mock_client_cls, \
-         patch("ml.data_fetcher.time.sleep"):  # suppress sleep in tests
+         patch("ml.data_fetcher.time.sleep"):
 
         mock_client_instance = MagicMock()
         mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
@@ -342,38 +355,85 @@ def test_fetch_funding_mock():
 
         result = fetch_funding(start_ms, end_ms)
 
-    # (a) ccxt stall detection: fetch_funding_rate_history called exactly twice (page1 + stall page2)
     assert mock_exchange.fetch_funding_rate_history.call_count == 2, (
-        f"Expected 2 ccxt calls (stall on page 2), got {mock_exchange.fetch_funding_rate_history.call_count}"
+        f"Expected 2 ccxt calls (page1 + no-progress page2), got {mock_exchange.fetch_funding_rate_history.call_count}"
     )
-
-    # (b) REST fallback triggered: httpx.Client.get called at least twice (pages 1 and 2)
     assert mock_client_instance.get.call_count >= 2, (
         f"Expected REST fallback with >= 2 GET calls, got {mock_client_instance.get.call_count}"
     )
-
-    # Result must be a DataFrame with correct columns
     assert isinstance(result, pd.DataFrame), "fetch_funding must return a DataFrame"
     assert list(result.columns) == ["timestamp", "funding_rate"], (
         f"Unexpected columns: {list(result.columns)}"
     )
-
-    # (c) Deduplication: no duplicate timestamps in result
     assert result["timestamp"].duplicated().sum() == 0, "Result contains duplicate timestamps"
 
-    # (d) All records within [start_ms, end_ms)
     start_dt = pd.Timestamp(start_ms, unit="ms", tz="UTC")
     end_dt   = pd.Timestamp(end_ms,   unit="ms", tz="UTC")
     assert (result["timestamp"] >= start_dt).all(), "Some records are before start_ms"
     assert (result["timestamp"] < end_dt).all(),    "Some records are at or after end_ms"
-
-    # Sorted ascending
     assert result["timestamp"].is_monotonic_increasing, "Result is not sorted ascending"
-
-    # funding_rate column is float
     assert result["funding_rate"].dtype == float, (
         f"funding_rate dtype should be float, got {result['funding_rate'].dtype}"
     )
+
+
+def test_fetch_funding_ccxt_descending_pages_accumulates_beyond_single_page():
+    """Descending ccxt pages should still advance across a long window.
+
+    This is the regression guard for the one-page failure mode: when MEXC/ccxt
+    returns newest-first pages, advancing via batch[-1] stalls near the first
+    page boundary. The funding path should instead keep moving forward and collect
+    materially more than 100 records without invoking REST fallback.
+    """
+    import sys
+    sys.path.insert(0, '/home/nebula/nyxml4')
+
+    from unittest.mock import patch, MagicMock
+    import ml.data_fetcher as df_module
+    from ml.data_fetcher import fetch_funding
+
+    interval_ms = 8 * 3600 * 1000
+    expected_points = 120
+    start_ms = 1_700_000_000_000
+    end_ms = start_ms + expected_points * interval_ms
+    all_ts = [start_ms + i * interval_ms for i in range(expected_points)]
+
+    def make_desc_page(start_idx, size):
+        ts_slice = all_ts[start_idx:start_idx + size]
+        return [
+            {"timestamp": ts, "fundingRate": 0.0001 + idx * 1e-7}
+            for idx, ts in enumerate(reversed(ts_slice))
+        ]
+
+    ccxt_pages = [
+        make_desc_page(0, 100),
+        make_desc_page(100, 20),
+        [],
+    ]
+
+    mock_exchange = MagicMock()
+    mock_exchange.fetch_funding_rate_history.side_effect = ccxt_pages
+    mock_exchange.load_markets.return_value = None
+
+    with patch.object(df_module.ccxt, "mexc", return_value=mock_exchange), \
+         patch("ml.data_fetcher.httpx.Client") as mock_client_cls, \
+         patch("ml.data_fetcher.time.sleep"):
+
+        mock_client_instance = MagicMock()
+        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = MagicMock(return_value=False)
+        mock_client_cls.return_value = mock_client_instance
+
+        result = fetch_funding(start_ms, end_ms)
+
+    assert mock_exchange.fetch_funding_rate_history.call_count >= 2, (
+        f"Expected multi-page ccxt pagination, got {mock_exchange.fetch_funding_rate_history.call_count} call(s)"
+    )
+    assert mock_client_instance.get.call_count == 0, "REST fallback should not be needed when ccxt pages advance"
+    assert len(result) == expected_points, f"Expected {expected_points} funding rows, got {len(result)}"
+    assert len(result) > 100, "Regression guard failed: funding retrieval did not exceed one page"
+    assert result["timestamp"].is_monotonic_increasing, "ccxt result should be sorted ascending after normalization"
+    assert result["timestamp"].duplicated().sum() == 0, "ccxt result should be deduplicated"
 
 
 def test_volume_ratio_n1_excludes_self_from_mean():

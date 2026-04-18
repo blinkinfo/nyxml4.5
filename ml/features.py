@@ -233,14 +233,37 @@ def build_features(
     # -----------------------------------------------------------------------
     # Funding features
     # -----------------------------------------------------------------------
+    _funding_roll_mean = funding["funding_rate"].rolling(24, min_periods=2).mean()
+    _funding_roll_std = funding["funding_rate"].rolling(24, min_periods=2).std()
     funding["funding_zscore"] = (
-        funding["funding_rate"] - funding["funding_rate"].rolling(24, min_periods=2).mean()
-    ) / funding["funding_rate"].rolling(24, min_periods=2).std()
-    funding.loc[funding["funding_rate"].rolling(24, min_periods=2).std() == 0, "funding_zscore"] = np.nan
+        funding["funding_rate"] - _funding_roll_mean
+    ) / _funding_roll_std
+    _funding_neutral_mask = funding["funding_rate"].notna() & (
+        _funding_roll_std.isna() | (_funding_roll_std <= 0)
+    )
+    funding.loc[_funding_neutral_mask, "funding_zscore"] = 0.0
 
     rf = _asof_backward(ts_n1, funding, ["funding_rate", "funding_zscore"])
     df5["funding_rate"] = rf["funding_rate"].values
     df5["funding_zscore"] = rf["funding_zscore"].values
+    _funding_rate_missing = int(df5["funding_rate"].isna().sum())
+    _funding_zscore_neutral = int(df5["funding_zscore"].eq(0.0).sum())
+    if _funding_rate_missing > 0:
+        log.warning(
+            "build_features: funding_rate missing for %d rows after asof merge; those rows may still be dropped",
+            _funding_rate_missing,
+        )
+    if _funding_neutral_mask.any():
+        log.info(
+            "build_features: funding_zscore used neutral fallback for %d funding history rows before full 24-point history was available",
+            int(_funding_neutral_mask.sum()),
+        )
+    log.info(
+        "build_features: funding merge summary rows=%d funding_rate_missing=%d funding_zscore_neutral_rows=%d",
+        len(df5),
+        _funding_rate_missing,
+        _funding_zscore_neutral,
+    )
 
     # -----------------------------------------------------------------------
     # OHLCV-native pressure features — computed purely from df5, zero parity gap
